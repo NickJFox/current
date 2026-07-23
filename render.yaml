@@ -1,0 +1,18 @@
+services:
+  - type: web
+    name: current-market
+    runtime: docker
+    plan: starter
+    healthCheckPath: /healthz
+    autoDeployTrigger: commit
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: CACHE_TTL_MS
+        value: "300000"
+      - key: STALE_TTL_MS
+        value: "1800000"
+      - key: UPSTREAM_TIMEOUT_MS
+        value: "8000"
+      - key: RATE_LIMIT_PER_MINUTE
+        value: "90"

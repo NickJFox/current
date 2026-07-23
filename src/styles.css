@@ -1,0 +1,180 @@
+@import url("https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Manrope:wght@500;600;700&display=swap");
+
+:root {
+  font-family: "DM Sans", system-ui, sans-serif;
+  color: #16211c;
+  background: #f7f8f4;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  --ink: #16211c;
+  --muted: #68716c;
+  --soft: #f7f8f4;
+  --surface: #ffffff;
+  --line: #e3e8e2;
+  --green: #176c45;
+  --pale-green: #e8f1e8;
+}
+
+* { box-sizing: border-box; }
+
+html { scroll-behavior: smooth; }
+
+body { margin: 0; min-width: 320px; min-height: 100vh; background: var(--soft); }
+
+button, input { font: inherit; }
+button, a { -webkit-tap-highlight-color: transparent; }
+button { color: inherit; }
+
+.app-shell { min-height: 100vh; }
+
+.topbar {
+  position: sticky;
+  z-index: 10;
+  top: 0;
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  height: 72px;
+  padding: 0 clamp(1.25rem, 5vw, 5.5rem);
+  border-bottom: 1px solid rgba(22, 33, 28, 0.08);
+  background: rgba(247, 248, 244, 0.9);
+  backdrop-filter: blur(18px);
+}
+
+.brand { display: inline-flex; gap: 0.65rem; align-items: center; width: fit-content; color: var(--ink); font: 700 1.04rem "Manrope", sans-serif; text-decoration: none; }
+.brand-mark { display: grid; place-items: center; width: 29px; height: 29px; border-radius: 50% 50% 50% 12%; background: var(--ink); color: white; font-size: 0.78rem; }
+
+.topbar nav { display: flex; gap: 2rem; align-self: stretch; }
+.topbar nav a { position: relative; display: flex; gap: 0.45rem; align-items: center; color: #737a76; font-size: 0.88rem; font-weight: 600; text-decoration: none; }
+.topbar nav a.active { color: var(--ink); }
+.topbar nav a.active::after { position: absolute; right: 0; bottom: -1px; left: 0; height: 2px; background: var(--ink); content: ""; }
+.topbar nav span { display: grid; place-items: center; min-width: 19px; height: 19px; padding: 0 0.3rem; border-radius: 10px; background: #e5e9e3; font-size: 0.68rem; }
+
+.market-note { display: flex; gap: 0.45rem; align-items: center; justify-self: end; margin: 0; color: var(--muted); font-size: 0.76rem; }
+.market-note i, .trend-tag i { width: 6px; height: 6px; border-radius: 50%; background: #40a46c; box-shadow: 0 0 0 4px rgba(64, 164, 108, 0.1); }
+
+.hero { max-width: 850px; margin: 0 auto; padding: clamp(5rem, 9vw, 8rem) 1.5rem 5rem; text-align: center; }
+.kicker, .section-label { margin: 0 0 1rem; color: var(--green); font-size: 0.7rem; font-weight: 700; letter-spacing: 0.13em; text-transform: uppercase; }
+.hero h1 { margin: 0; font: 600 clamp(2.7rem, 6vw, 5.4rem)/1.03 "Manrope", sans-serif; letter-spacing: -0.06em; }
+.hero-copy { max-width: 570px; margin: 1.5rem auto 2.25rem; color: var(--muted); font-size: clamp(1rem, 1.7vw, 1.15rem); line-height: 1.65; }
+
+.search-bar { display: grid; grid-template-columns: 22px 1fr auto; gap: 0.75rem; align-items: center; max-width: 590px; height: 58px; margin: 0 auto; border: 1px solid #dce2dc; border-radius: 14px; background: white; padding: 0 0.85rem 0 1rem; box-shadow: 0 12px 38px rgba(30, 51, 40, 0.07); text-align: left; }
+.search-bar:focus-within { border-color: #8eaa99; box-shadow: 0 0 0 3px rgba(23, 108, 69, 0.08), 0 12px 38px rgba(30, 51, 40, 0.07); }
+.search-bar svg { width: 20px; fill: none; stroke: #64706a; stroke-linecap: round; stroke-width: 1.8; }
+.search-bar input { min-width: 0; border: 0; outline: 0; background: transparent; color: var(--ink); font-size: 0.94rem; }
+.search-bar input::placeholder { color: #909792; }
+.search-bar kbd { border: 1px solid var(--line); border-radius: 6px; background: #f7f8f5; padding: 0.22rem 0.4rem; color: #8b918d; font: 500 0.68rem "DM Sans", sans-serif; }
+
+.feed-section { max-width: 1210px; margin: 0 auto; padding: 0 1.5rem 6rem; }
+.feed-head { display: flex; justify-content: space-between; gap: 2rem; align-items: end; margin-bottom: 1.6rem; }
+.feed-head .section-label { margin-bottom: 0.5rem; }
+.feed-head h2 { margin: 0; font: 600 clamp(1.6rem, 3vw, 2.2rem) "Manrope", sans-serif; letter-spacing: -0.035em; }
+.feed-head > p { max-width: 300px; margin: 0 0 0.2rem; color: #8a918c; font-size: 0.78rem; text-align: right; }
+
+.filter-row { display: flex; gap: 0.5rem; overflow-x: auto; margin-bottom: 1.25rem; padding-bottom: 0.25rem; scrollbar-width: none; }
+.filter-row::-webkit-scrollbar { display: none; }
+.filter-row button { flex: 0 0 auto; border: 1px solid var(--line); border-radius: 999px; background: transparent; padding: 0.52rem 0.9rem; color: var(--muted); font-size: 0.78rem; font-weight: 600; cursor: pointer; transition: 140ms ease; }
+.filter-row button:hover { border-color: #b7c2ba; color: var(--ink); }
+.filter-row button.active { border-color: var(--ink); background: var(--ink); color: white; }
+
+.company-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.9rem; }
+.company-card { display: flex; flex-direction: column; min-height: 310px; border: 1px solid var(--line); border-radius: 16px; background: var(--surface); padding: 1.35rem; transition: transform 180ms ease, box-shadow 180ms ease, border-color 180ms ease; }
+.company-card:hover { transform: translateY(-3px); border-color: #cfd8d0; box-shadow: 0 16px 40px rgba(27, 44, 35, 0.07); }
+.card-top, .company-title, .company-card footer { display: flex; justify-content: space-between; gap: 1rem; align-items: center; }
+
+.company-logo { display: grid; place-items: center; width: 43px; height: 43px; border-radius: 12px; font: 700 0.9rem "Manrope", sans-serif; }
+.accent-lime { background: #e4f2a4; color: #26320c; }
+.accent-violet { background: #e7ddfb; color: #4d3477; }
+.accent-coral { background: #ffddd2; color: #77392c; }
+.accent-blue { background: #dbeaf8; color: #214c70; }
+.accent-green { background: #d8f0df; color: #215f38; }
+.accent-yellow { background: #fff0a8; color: #5b4c0c; }
+.accent-slate { background: #e3e7e8; color: #354044; }
+.accent-orange { background: #ffe0bc; color: #754514; }
+
+.bookmark-button { display: grid; place-items: center; width: 38px; height: 38px; border: 0; border-radius: 10px; background: transparent; cursor: pointer; }
+.bookmark-button:hover { background: #f3f5f1; }
+.bookmark-button svg, .save-company svg { width: 19px; fill: none; stroke: #7e8781; stroke-linejoin: round; stroke-width: 1.7; }
+.bookmark-button svg.is-filled, .save-company svg.is-filled { fill: var(--ink); stroke: var(--ink); }
+
+.company-title { align-items: start; margin-top: 1.15rem; }
+.company-title h3 { margin: 0 0 0.18rem; font: 600 1.18rem "Manrope", sans-serif; letter-spacing: -0.025em; }
+.company-title > div > span { color: #8b938e; font-size: 0.73rem; }
+.trend-tag { display: flex; flex: 0 0 auto; gap: 0.45rem; align-items: center; border-radius: 999px; background: var(--pale-green); padding: 0.38rem 0.58rem; color: #3e6f51; font-size: 0.68rem; font-weight: 600; }
+.trend-tag i { display: block; width: 5px; height: 5px; box-shadow: none; }
+
+.headline { max-width: 500px; margin: 1.55rem 0 1.75rem; font: 500 clamp(1.05rem, 1.7vw, 1.22rem)/1.45 "Manrope", sans-serif; letter-spacing: -0.02em; }
+.company-card footer { margin-top: auto; border-top: 1px solid #edf0ec; padding-top: 1rem; }
+.company-card footer > span { color: #8a918c; font-size: 0.7rem; }
+.company-card footer button { display: inline-flex; gap: 0.4rem; align-items: center; border: 0; background: transparent; padding: 0; color: var(--ink); font-size: 0.75rem; font-weight: 700; cursor: pointer; }
+.company-card footer svg { width: 16px; fill: none; stroke: currentColor; stroke-linecap: round; stroke-linejoin: round; stroke-width: 1.8; transition: transform 140ms ease; }
+.company-card footer button:hover svg { transform: translateX(3px); }
+
+.empty-state { grid-column: 1 / -1; display: grid; justify-items: center; border: 1px dashed #cfd7d0; border-radius: 16px; background: white; padding: 4rem 1rem; text-align: center; }
+.empty-state strong { font: 600 1.2rem "Manrope", sans-serif; }
+.empty-state p { margin: 0.5rem 0 1.2rem; color: var(--muted); }
+.empty-state button { border: 1px solid var(--line); border-radius: 8px; background: var(--soft); padding: 0.6rem 0.9rem; cursor: pointer; }
+.loading-state { display: flex; gap: 0.8rem; align-items: center; justify-content: center; min-height: 240px; border: 1px dashed #cfd7d0; border-radius: 16px; background: white; color: var(--muted); }
+.loading-spinner { width: 18px; height: 18px; border: 2px solid #dce5dd; border-top-color: var(--green); border-radius: 50%; animation: spin 700ms linear infinite; }
+
+.footer-note { border-top: 1px solid var(--line); background: #f0f3ed; padding: clamp(4.5rem, 8vw, 7rem) 1.5rem; text-align: center; }
+.footer-note p { margin: 0 0 1rem; color: var(--green); font-size: 0.72rem; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; }
+.footer-note h2 { margin: 0; font: 600 clamp(2rem, 4vw, 3.7rem)/1.12 "Manrope", sans-serif; letter-spacing: -0.05em; }
+.footer-note span { display: block; margin-top: 1.5rem; color: #858d88; font-size: 0.78rem; }
+
+.detail-backdrop { position: fixed; z-index: 30; inset: 0; display: flex; justify-content: flex-end; background: rgba(13, 20, 16, 0.32); backdrop-filter: blur(4px); }
+.detail-drawer { position: relative; width: min(460px, 100%); height: 100%; overflow-y: auto; background: #fbfcf8; padding: clamp(2rem, 5vw, 3.5rem); box-shadow: -20px 0 60px rgba(13, 27, 19, 0.13); animation: slide-in 220ms ease-out; }
+.close-button { position: absolute; top: 1.4rem; right: 1.4rem; display: grid; place-items: center; width: 38px; height: 38px; border: 1px solid var(--line); border-radius: 50%; background: white; color: var(--muted); font-size: 1.35rem; cursor: pointer; }
+.detail-drawer > .company-logo { margin-bottom: 3rem; }
+.detail-drawer .section-label { margin-bottom: 0.6rem; }
+.detail-drawer h2 { margin: 0; font: 600 clamp(2.1rem, 6vw, 3.3rem) "Manrope", sans-serif; letter-spacing: -0.05em; }
+.drawer-meta { display: block; margin-top: 0.35rem; color: #838b86; font-size: 0.78rem; }
+.drawer-headline { margin: 2.2rem 0 1rem; font: 500 1.35rem/1.45 "Manrope", sans-serif; letter-spacing: -0.025em; }
+.drawer-context { color: var(--muted); line-height: 1.7; }
+.drawer-topic { display: grid; gap: 0.45rem; margin: 2rem 0; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); padding: 1.25rem 0; }
+.drawer-topic span { color: #8b928d; font-size: 0.68rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; }
+.drawer-topic strong { font-size: 0.92rem; }
+.news-section { margin: 0 0 2rem; }
+.news-heading { display: flex; justify-content: space-between; gap: 1rem; align-items: baseline; margin-bottom: 0.8rem; }
+.news-heading > span { color: #8b928d; font-size: 0.68rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; }
+.news-heading small { color: #9aa09c; font-size: 0.62rem; text-align: right; }
+.news-message { display: flex; gap: 0.6rem; align-items: center; margin: 0; border: 1px solid var(--line); border-radius: 10px; background: white; padding: 1rem; color: var(--muted); font-size: 0.78rem; }
+.news-list { display: grid; border-top: 1px solid var(--line); }
+.news-list a { position: relative; display: grid; gap: 0.3rem; border-bottom: 1px solid var(--line); padding: 0.9rem 1.5rem 0.9rem 0; color: var(--ink); text-decoration: none; }
+.news-list a:hover strong { color: var(--green); }
+.news-list span { color: #8b928d; font-size: 0.65rem; }
+.news-list strong { font: 600 0.82rem/1.4 "Manrope", sans-serif; transition: color 140ms ease; }
+.news-list svg { position: absolute; right: 0; top: 50%; width: 14px; fill: none; stroke: var(--muted); stroke-linecap: round; stroke-linejoin: round; stroke-width: 1.8; transform: translateY(-50%); }
+.save-company { display: flex; gap: 0.6rem; align-items: center; justify-content: center; width: 100%; border: 0; border-radius: 10px; background: var(--ink); padding: 0.9rem; color: white; font-weight: 600; cursor: pointer; }
+.save-company svg { stroke: white; }
+.save-company svg.is-filled { fill: white; stroke: white; }
+
+@keyframes slide-in { from { transform: translateX(100%); } to { transform: translateX(0); } }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+@media (max-width: 720px) {
+  .topbar { grid-template-columns: 1fr auto; padding: 0 1rem; }
+  .topbar nav { gap: 1.2rem; }
+  .market-note { display: none; }
+  .hero { padding-top: 4.5rem; }
+  .hero h1 br { display: none; }
+  .feed-head { align-items: start; flex-direction: column; gap: 0.7rem; }
+  .feed-head > p { text-align: left; }
+  .company-grid { grid-template-columns: 1fr; }
+  .company-card { min-height: 290px; }
+}
+
+@media (max-width: 440px) {
+  .topbar nav a:first-child { display: none; }
+  .hero { padding-right: 1rem; padding-left: 1rem; }
+  .search-bar kbd { display: none; }
+  .search-bar { grid-template-columns: 22px 1fr; }
+  .feed-section { padding-right: 1rem; padding-left: 1rem; }
+  .company-title { gap: 0.5rem; }
+  .company-card footer { align-items: flex-end; }
+  .company-card footer > span { max-width: 62%; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { scroll-behavior: auto !important; animation: none !important; transition: none !important; }
+}
