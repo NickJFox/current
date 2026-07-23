@@ -30,6 +30,16 @@ curl http://localhost:3000/api/trending
 
 ## Deployment
 
+### Netlify
+
+The repository includes `netlify.toml` and native functions for both API routes. Connect the GitHub repository in Netlify and use the detected settings:
+
+- Build command: `npm run build`
+- Publish directory: `dist`
+- Functions directory: `netlify/functions`
+
+The redirects in `netlify.toml` must remain above the SPA fallback so `/api/trending` and `/api/news/:symbol` return JSON instead of `index.html`.
+
 ### Render
 
 1. Push this directory to a Git repository.
