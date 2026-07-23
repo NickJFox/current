@@ -9,14 +9,6 @@ function SearchIcon() {
   );
 }
 
-function BookmarkIcon({ filled = false }) {
-  return (
-    <svg viewBox="0 0 24 24" aria-hidden="true" className={filled ? "is-filled" : ""}>
-      <path d="M6.5 4.5a2 2 0 0 1 2-2h7a2 2 0 0 1 2 2v17L12 18l-5.5 3.5z" />
-    </svg>
-  );
-}
-
 function ArrowIcon() {
   return (
     <svg viewBox="0 0 24 24" aria-hidden="true">
@@ -32,7 +24,6 @@ function App() {
   const [updatedAt, setUpdatedAt] = useState(null);
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState("All");
-  const [saved, setSaved] = useState([]);
   const [selected, setSelected] = useState(null);
   const [news, setNews] = useState([]);
   const [newsStatus, setNewsStatus] = useState("idle");
@@ -109,12 +100,6 @@ function App() {
     });
   }, [companies, filter, query]);
 
-  function toggleSaved(ticker) {
-    setSaved((current) =>
-      current.includes(ticker) ? current.filter((item) => item !== ticker) : [...current, ticker],
-    );
-  }
-
   return (
     <div className="app-shell">
       <header className="topbar">
@@ -125,7 +110,6 @@ function App() {
 
         <nav aria-label="Primary navigation">
           <a className="active" href="#discover">Discover</a>
-          <a href="#saved">Saved <span>{saved.length}</span></a>
         </nav>
 
         <p className="market-note">
@@ -169,17 +153,7 @@ function App() {
           {status === "ready" && <div className="company-grid">
             {visibleCompanies.map((company) => (
               <article className="company-card" key={company.ticker}>
-                <div className="card-top">
-                  <div className={`company-logo accent-${company.accent}`}>{company.mark}</div>
-                  <button
-                    className="bookmark-button"
-                    type="button"
-                    aria-label={`${saved.includes(company.ticker) ? "Remove" : "Save"} ${company.name}`}
-                    onClick={() => toggleSaved(company.ticker)}
-                  >
-                    <BookmarkIcon filled={saved.includes(company.ticker)} />
-                  </button>
-                </div>
+                <div className={`company-logo accent-${company.accent}`}>{company.mark}</div>
 
                 <div className="company-title">
                   <div>
@@ -255,10 +229,6 @@ function App() {
                 </div>
               )}
             </section>
-            <button className="save-company" type="button" onClick={() => toggleSaved(selected.ticker)}>
-              <BookmarkIcon filled={saved.includes(selected.ticker)} />
-              {saved.includes(selected.ticker) ? "Saved for later" : "Save for later"}
-            </button>
           </aside>
         </div>
       )}

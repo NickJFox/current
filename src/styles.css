@@ -48,7 +48,6 @@ button { color: inherit; }
 .topbar nav a { position: relative; display: flex; gap: 0.45rem; align-items: center; color: #737a76; font-size: 0.88rem; font-weight: 600; text-decoration: none; }
 .topbar nav a.active { color: var(--ink); }
 .topbar nav a.active::after { position: absolute; right: 0; bottom: -1px; left: 0; height: 2px; background: var(--ink); content: ""; }
-.topbar nav span { display: grid; place-items: center; min-width: 19px; height: 19px; padding: 0 0.3rem; border-radius: 10px; background: #e5e9e3; font-size: 0.68rem; }
 
 .market-note { display: flex; gap: 0.45rem; align-items: center; justify-self: end; margin: 0; color: var(--muted); font-size: 0.76rem; }
 .market-note i, .trend-tag i { width: 6px; height: 6px; border-radius: 50%; background: #40a46c; box-shadow: 0 0 0 4px rgba(64, 164, 108, 0.1); }
@@ -80,7 +79,7 @@ button { color: inherit; }
 .company-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.9rem; }
 .company-card { display: flex; flex-direction: column; min-height: 310px; border: 1px solid var(--line); border-radius: 16px; background: var(--surface); padding: 1.35rem; transition: transform 180ms ease, box-shadow 180ms ease, border-color 180ms ease; }
 .company-card:hover { transform: translateY(-3px); border-color: #cfd8d0; box-shadow: 0 16px 40px rgba(27, 44, 35, 0.07); }
-.card-top, .company-title, .company-card footer { display: flex; justify-content: space-between; gap: 1rem; align-items: center; }
+.company-title, .company-card footer { display: flex; justify-content: space-between; gap: 1rem; align-items: center; }
 
 .company-logo { display: grid; place-items: center; width: 43px; height: 43px; border-radius: 12px; font: 700 0.9rem "Manrope", sans-serif; }
 .accent-lime { background: #e4f2a4; color: #26320c; }
@@ -92,10 +91,6 @@ button { color: inherit; }
 .accent-slate { background: #e3e7e8; color: #354044; }
 .accent-orange { background: #ffe0bc; color: #754514; }
 
-.bookmark-button { display: grid; place-items: center; width: 38px; height: 38px; border: 0; border-radius: 10px; background: transparent; cursor: pointer; }
-.bookmark-button:hover { background: #f3f5f1; }
-.bookmark-button svg, .save-company svg { width: 19px; fill: none; stroke: #7e8781; stroke-linejoin: round; stroke-width: 1.7; }
-.bookmark-button svg.is-filled, .save-company svg.is-filled { fill: var(--ink); stroke: var(--ink); }
 
 .company-title { align-items: start; margin-top: 1.15rem; }
 .company-title h3 { margin: 0 0 0.18rem; font: 600 1.18rem "Manrope", sans-serif; letter-spacing: -0.025em; }
@@ -145,9 +140,6 @@ button { color: inherit; }
 .news-list span { color: #8b928d; font-size: 0.65rem; }
 .news-list strong { font: 600 0.82rem/1.4 "Manrope", sans-serif; transition: color 140ms ease; }
 .news-list svg { position: absolute; right: 0; top: 50%; width: 14px; fill: none; stroke: var(--muted); stroke-linecap: round; stroke-linejoin: round; stroke-width: 1.8; transform: translateY(-50%); }
-.save-company { display: flex; gap: 0.6rem; align-items: center; justify-content: center; width: 100%; border: 0; border-radius: 10px; background: var(--ink); padding: 0.9rem; color: white; font-weight: 600; cursor: pointer; }
-.save-company svg { stroke: white; }
-.save-company svg.is-filled { fill: white; stroke: white; }
 
 @keyframes slide-in { from { transform: translateX(100%); } to { transform: translateX(0); } }
 @keyframes spin { to { transform: rotate(360deg); } }
