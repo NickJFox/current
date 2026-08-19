@@ -11,8 +11,10 @@
   --soft: #f7f8f4;
   --surface: #ffffff;
   --line: #e3e8e2;
-  --green: #176c45;
-  --pale-green: #e8f1e8;
+  --green: #087a43;
+  --green-dark: #055c32;
+  --green-bright: #19a760;
+  --pale-green: #e5f6ec;
 }
 
 * { box-sizing: border-box; }
@@ -42,15 +44,15 @@ button { color: inherit; }
 }
 
 .brand { display: inline-flex; gap: 0.65rem; align-items: center; width: fit-content; color: var(--ink); font: 700 1.04rem "Manrope", sans-serif; text-decoration: none; }
-.brand-mark { display: grid; place-items: center; width: 29px; height: 29px; border-radius: 50% 50% 50% 12%; background: var(--ink); color: white; font-size: 0.78rem; }
+.brand-mark { display: grid; place-items: center; width: 29px; height: 29px; border-radius: 50% 50% 50% 12%; background: var(--green); color: white; font-size: 0.78rem; }
 
 .topbar nav { display: flex; gap: 2rem; align-self: stretch; }
 .topbar nav a { position: relative; display: flex; gap: 0.45rem; align-items: center; color: #737a76; font-size: 0.88rem; font-weight: 600; text-decoration: none; }
-.topbar nav a.active { color: var(--ink); }
-.topbar nav a.active::after { position: absolute; right: 0; bottom: -1px; left: 0; height: 2px; background: var(--ink); content: ""; }
+.topbar nav a.active { color: var(--green-dark); }
+.topbar nav a.active::after { position: absolute; right: 0; bottom: -1px; left: 0; height: 2px; background: var(--green); content: ""; }
 
 .market-note { display: flex; gap: 0.45rem; align-items: center; justify-self: end; margin: 0; color: var(--muted); font-size: 0.76rem; }
-.market-note i, .trend-tag i { width: 6px; height: 6px; border-radius: 50%; background: #40a46c; box-shadow: 0 0 0 4px rgba(64, 164, 108, 0.1); }
+.market-note i, .trend-tag i { width: 6px; height: 6px; border-radius: 50%; background: var(--green-bright); box-shadow: 0 0 0 4px rgba(25, 167, 96, 0.12); }
 
 .hero { max-width: 850px; margin: 0 auto; padding: clamp(5rem, 9vw, 8rem) 1.5rem 5rem; text-align: center; }
 .kicker, .section-label { margin: 0 0 1rem; color: var(--green); font-size: 0.7rem; font-weight: 700; letter-spacing: 0.13em; text-transform: uppercase; }
@@ -78,7 +80,7 @@ button { color: inherit; }
 
 .company-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.9rem; }
 .company-card { display: flex; flex-direction: column; min-height: 310px; border: 1px solid var(--line); border-radius: 16px; background: var(--surface); padding: 1.35rem; transition: transform 180ms ease, box-shadow 180ms ease, border-color 180ms ease; }
-.company-card:hover { transform: translateY(-3px); border-color: #cfd8d0; box-shadow: 0 16px 40px rgba(27, 44, 35, 0.07); }
+.company-card:hover { transform: translateY(-3px); border-color: #b8d9c5; box-shadow: 0 16px 40px rgba(8, 122, 67, 0.09); }
 .company-title, .company-card footer { display: flex; justify-content: space-between; gap: 1rem; align-items: center; }
 
 .company-logo { display: grid; place-items: center; width: 43px; height: 43px; border-radius: 12px; font: 700 0.9rem "Manrope", sans-serif; }
@@ -95,13 +97,13 @@ button { color: inherit; }
 .company-title { align-items: start; margin-top: 1.15rem; }
 .company-title h3 { margin: 0 0 0.18rem; font: 600 1.18rem "Manrope", sans-serif; letter-spacing: -0.025em; }
 .company-title > div > span { color: #8b938e; font-size: 0.73rem; }
-.trend-tag { display: flex; flex: 0 0 auto; gap: 0.45rem; align-items: center; border-radius: 999px; background: var(--pale-green); padding: 0.38rem 0.58rem; color: #3e6f51; font-size: 0.68rem; font-weight: 600; }
+.trend-tag { display: flex; flex: 0 0 auto; gap: 0.45rem; align-items: center; border: 1px solid #ccebd8; border-radius: 999px; background: var(--pale-green); padding: 0.38rem 0.58rem; color: var(--green-dark); font-size: 0.68rem; font-weight: 600; }
 .trend-tag i { display: block; width: 5px; height: 5px; box-shadow: none; }
 
 .headline { max-width: 500px; margin: 1.55rem 0 1.75rem; font: 500 clamp(1.05rem, 1.7vw, 1.22rem)/1.45 "Manrope", sans-serif; letter-spacing: -0.02em; }
 .company-card footer { margin-top: auto; border-top: 1px solid #edf0ec; padding-top: 1rem; }
 .company-card footer > span { color: #8a918c; font-size: 0.7rem; }
-.company-card footer button { display: inline-flex; gap: 0.4rem; align-items: center; border: 0; background: transparent; padding: 0; color: var(--ink); font-size: 0.75rem; font-weight: 700; cursor: pointer; }
+.company-card footer button { display: inline-flex; gap: 0.4rem; align-items: center; border: 0; background: transparent; padding: 0; color: var(--green-dark); font-size: 0.75rem; font-weight: 700; cursor: pointer; }
 .company-card footer svg { width: 16px; fill: none; stroke: currentColor; stroke-linecap: round; stroke-linejoin: round; stroke-width: 1.8; transition: transform 140ms ease; }
 .company-card footer button:hover svg { transform: translateX(3px); }
 
