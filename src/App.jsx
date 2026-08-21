@@ -120,7 +120,7 @@ function App() {
       <main id="top">
         <section className="hero" id="discover">
           <p className="kicker">Volume signals, without the noise</p>
-          <h1>See what companies<br />people are talking about.</h1>
+          <h1>See what companies<br /> people are talking about.</h1>
           <p className="hero-copy">
             Find companies rising while trading above their normal volume.
           </p>
