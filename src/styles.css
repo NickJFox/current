@@ -159,7 +159,6 @@ button { color: inherit; }
 }
 
 @media (max-width: 440px) {
-  .topbar nav a:first-child { display: none; }
   .hero { padding-right: 1rem; padding-left: 1rem; }
   .search-bar kbd { display: none; }
   .search-bar { grid-template-columns: 22px 1fr; }
@@ -172,3 +171,33 @@ button { color: inherit; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; animation: none !important; transition: none !important; }
 }
+
+.portfolio-section { max-width: 1210px; margin: 0 auto; padding: 0 1.5rem 5rem; scroll-margin-top: 100px; }
+.portfolio-status { display: grid; gap: .55rem; padding: 1.2rem 1.4rem; margin-bottom: 1rem; border: 1px solid #b8d9c5; background: var(--pale-green); border-radius: 14px; color: var(--green-dark); font-size: .88rem; line-height: 1.5; }
+.portfolio-status.attention { background: #fff5df; border-color: #e6ce98; color: #735116; }
+.portfolio-status small { opacity: .85; }
+.portfolio-stats { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1rem; }
+.portfolio-stat { display: grid; align-content: start; gap: .8rem; border: 1px solid var(--line); border-radius: 14px; background: white; padding: 1.5rem; }
+.portfolio-stat > span { color: var(--muted); font-size: .8rem; }
+.portfolio-stat strong { font: 600 clamp(1.4rem, 3vw, 2.25rem) "Manrope", sans-serif; letter-spacing: -.04em; }
+.portfolio-stat small, .portfolio-panel > small { color: var(--muted); font-size: .72rem; line-height: 1.5; }
+.portfolio-panel { margin-top: 1rem; border: 1px solid var(--line); border-radius: 14px; background: white; padding: 1.4rem; }
+.portfolio-panel h3 { margin: 0 0 1.3rem; font: 600 1.1rem "Manrope", sans-serif; }
+.portfolio-table-wrap { overflow-x: auto; }
+.portfolio-panel table { width: 100%; border-collapse: collapse; font-size: .8rem; white-space: nowrap; text-align: left; }
+.portfolio-panel th { color: var(--muted); font-weight: 500; }
+.portfolio-panel th, .portfolio-panel td { padding: .9rem .8rem .9rem 0; border-bottom: 1px solid var(--line); }
+.portfolio-panel tbody tr:last-child td { border-bottom: 0; }
+.portfolio-placeholder, .portfolio-methodology { color: var(--muted); font-size: .8rem; line-height: 1.7; }
+.portfolio-placeholder { padding: 1.5rem 0; }
+.portfolio-methodology { margin: 1.3rem 0 0; }
+.equity-chart { margin: 0; }
+.equity-chart figcaption { display: flex; flex-wrap: wrap; gap: 1.5rem; margin-bottom: .8rem; font-size: .75rem; }
+.strategy-key { color: var(--green); }
+.benchmark-key { color: #8d80b5; }
+.equity-chart svg { display: block; width: 100%; min-height: 160px; }
+.scan-history { border-top: 1px solid var(--line); padding: 1rem 0; font-size: .8rem; }
+.scan-history summary { cursor: pointer; }
+.scan-history li { padding: .35rem 0; color: var(--muted); }
+@media (max-width: 720px) { .portfolio-stats { grid-template-columns: repeat(2, minmax(0, 1fr)); } .portfolio-stat { padding: 1rem; } }
+@media (max-width: 440px) { .portfolio-section { padding-left: 1rem; padding-right: 1rem; } .portfolio-stat small { font-size: .65rem; } }

@@ -11,6 +11,7 @@ WORKDIR /app
 COPY --from=build /app/dist ./dist
 COPY --from=build /app/server ./server
 COPY --from=build /app/package.json ./package.json
+RUN mkdir -p /app/data && chown node:node /app/data
 EXPOSE 3000
 USER node
 CMD ["node", "server/index.js"]

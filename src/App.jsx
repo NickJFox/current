@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 
+import Portfolio from "./Portfolio.jsx";
+
 function SearchIcon() {
   return (
     <svg viewBox="0 0 24 24" aria-hidden="true">
@@ -109,7 +111,8 @@ function App() {
         </a>
 
         <nav aria-label="Primary navigation">
-          <a className="active" href="#discover">Discover</a>
+          <a href="#performance">Performance</a>
+          <a href="#discover">Discover</a>
         </nav>
 
         <p className="market-note">
@@ -119,12 +122,14 @@ function App() {
 
       <main id="top">
         <section className="hero" id="discover">
-          <p className="kicker">Volume signals, without the noise</p>
-          <h1>See what companies<br /> people are talking about.</h1>
+          <p className="kicker">Momentum, measured over time</p>
+          <h1>Put the momentum<br /> list to the test.</h1>
           <p className="hero-copy">
-            Find companies rising while trading above their normal volume.
+            Follow an automated paper portfolio, track every trade, and compare its performance with the market.
           </p>
         </section>
+
+        <Portfolio />
 
         <section className="feed-section">
           <div className="feed-head">

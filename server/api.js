@@ -1,5 +1,7 @@
 import { getCompanyNews, getTrendingCompanies } from "./market-data.js";
 
+import { getPaperPortfolio } from "./paper/runtime.js";
+
 const WINDOW_MS = 60_000;
 const MAX_REQUESTS = Number(process.env.RATE_LIMIT_PER_MINUTE || 90);
 const clients = new Map();
@@ -51,6 +53,10 @@ export async function handleApiRequest(request, response) {
 
   try {
     let data;
+    if (pathname === "/api/portfolio") {
+      sendJson(response, 200, request.method === "HEAD" ? {} : await getPaperPortfolio());
+      return true;
+    }
     if (pathname === "/api/trending") {
       data = await getTrendingCompanies();
     } else {
@@ -70,7 +76,7 @@ export async function handleApiRequest(request, response) {
       message: error instanceof Error ? error.message : "Unknown error",
     }));
     sendJson(response, 502, {
-      error: pathname.startsWith("/api/news/")
+      error: pathname === "/api/portfolio" ? "Portfolio storage is temporarily unavailable." : pathname.startsWith("/api/news/")
         ? "Recent news is temporarily unavailable."
         : "Live market data is temporarily unavailable.",
     });

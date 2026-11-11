@@ -17,3 +17,8 @@ test("regularSessionProgress adjusts during the regular session", () => {
   const halfway = regularSessionProgress(new Date("2026-07-23T16:45:00Z"));
   assert.ok(Math.abs(halfway - 0.5) < 0.001);
 });
+
+test("opening volume pace uses elapsed minutes rather than a 10% floor", () => {
+  assert.equal(regularSessionProgress(new Date("2026-11-11T14:30:00Z")), 1 / 390);
+  assert.equal(regularSessionProgress(new Date("2026-11-11T14:45:00Z")), 15 / 390);
+});

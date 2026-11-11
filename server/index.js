@@ -4,6 +4,8 @@ import { extname, join, normalize } from "node:path";
 import { fileURLToPath } from "node:url";
 import { handleApiRequest } from "./api.js";
 
+import { startPaperWorker, stopPaperWorker } from "./paper/runtime.js";
+
 const root = fileURLToPath(new URL("../dist/", import.meta.url));
 const port = Number(process.env.PORT || 3000);
 const host = process.env.HOST || "0.0.0.0";
@@ -75,12 +77,13 @@ const server = createServer(async (request, response) => {
 });
 
 server.listen(port, host, () => {
+  startPaperWorker();
   console.log(JSON.stringify({ level: "info", event: "server_started", host, port }));
 });
 
 function shutdown(signal) {
   console.log(JSON.stringify({ level: "info", event: "server_stopping", signal }));
-  server.close(() => process.exit(0));
+  server.close(async () => { await stopPaperWorker(); process.exit(0); });
   setTimeout(() => process.exit(1), 10_000).unref();
 }
 

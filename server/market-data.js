@@ -86,8 +86,8 @@ export function regularSessionProgress(date = new Date()) {
   const minutes = Number(value("hour")) * 60 + Number(value("minute"));
   const open = 9 * 60 + 30;
   const close = 16 * 60;
-  if (minutes <= open || minutes >= close) return 1;
-  return Math.max((minutes - open) / (close - open), 0.1);
+  if (minutes < open || minutes >= close) return 1;
+  return Math.max((minutes - open) / (close - open), 1 / (close - open));
 }
 
 function toCompany(stock, index, relativeVolume, averageVolume) {
@@ -189,9 +189,9 @@ async function refreshTrending() {
   };
 }
 
-export async function getTrendingCompanies() {
+export async function getTrendingCompanies({ forceRefresh = false } = {}) {
   const age = Date.now() - state.trendingAt;
-  if (state.trending && age < CACHE_TTL) return state.trending;
+  if (!forceRefresh && state.trending && age < CACHE_TTL) return state.trending;
   if (state.trendingRequest) return state.trendingRequest;
 
   state.trendingRequest = refreshTrending()

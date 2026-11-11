@@ -2,6 +2,8 @@ import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import { handleApiRequest } from "./server/api.js";
 
+import { startPaperWorker, stopPaperWorker } from "./server/paper/runtime.js";
+
 function marketDataPlugin() {
   const middleware = (request, response, next) => {
     handleApiRequest(request, response)
@@ -13,6 +15,8 @@ function marketDataPlugin() {
   return {
     name: "market-data-api",
     configureServer(server) {
+      startPaperWorker();
+      server.httpServer?.once("close", () => { stopPaperWorker(); });
       server.middlewares.use(middleware);
     },
     configurePreviewServer(server) {

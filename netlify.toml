@@ -17,6 +17,11 @@
   status = 200
 
 [[redirects]]
+  from = "/api/portfolio"
+  to = "/.netlify/functions/portfolio"
+  status = 200
+
+[[redirects]]
   from = "/*"
   to = "/index.html"
   status = 200

@@ -5,6 +5,11 @@ services:
     plan: starter
     healthCheckPath: /healthz
     autoDeployTrigger: commit
+    # A single always-on instance owns this durable ledger and background loop.
+    disk:
+      name: paper-portfolio
+      mountPath: /app/data
+      sizeGB: 1
     envVars:
       - key: NODE_ENV
         value: production
@@ -16,3 +21,13 @@ services:
         value: "8000"
       - key: RATE_LIMIT_PER_MINUTE
         value: "90"
+      - key: PAPER_TRADING_ENABLED
+        value: "true"
+      - key: PAPER_STATE_PATH
+        value: /app/data/paper-portfolio.json
+      - key: ALPACA_API_KEY
+        sync: false
+      - key: ALPACA_API_SECRET
+        sync: false
+      - key: ALPACA_DATA_FEED
+        value: iex
