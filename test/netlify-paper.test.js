@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import { BlobStore } from "../server/paper/blob-store.js";
-import { authorized, signature } from "../server/paper/netlify.js";
+import { authorized, signature, isProduction } from "../server/paper/netlify.js";
 import portfolio from "../netlify/functions/portfolio.js";
 import worker from "../netlify/functions/paper-worker-background.js";
 import schedule from "../netlify/functions/paper-schedule.js";
@@ -78,4 +78,11 @@ test("branch and local schedules never trade against the production ledger", asy
   const previous = process.env.CONTEXT;
   try { process.env.CONTEXT = "deploy-preview"; await schedule(); }
   finally { if (previous === undefined) delete process.env.CONTEXT; else process.env.CONTEXT = previous; }
+});
+
+test("runtime deploy metadata activates production without build-only CONTEXT env", () => {
+  assert.equal(isProduction({ deploy: { context: "production", published: true } }), true);
+  assert.equal(isProduction({ deploy: { context: "deploy-preview", published: true } }), false);
+  assert.equal(isProduction({ deploy: { context: "production", published: false } }), false);
+  assert.equal(isProduction(undefined), false);
 });

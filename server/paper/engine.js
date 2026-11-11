@@ -196,6 +196,11 @@ export class PaperEngine {
       if (qty < 1) {
         run.decisions[symbol] = { status: "skipped", reason: "Insufficient cash for one share" }; await this.save(); continue;
       }
+      const beforeSubmit = easternTime(this.now());
+      if (beforeSubmit.day !== day || beforeSubmit.minute >= target + 10) {
+        run.decisions[symbol] = { status: "skipped", reason: "Morning entry window ended" };
+        await this.save(); continue;
+      }
       try {
         const order = await this.place(id, { client_order_id: id, symbol, qty: String(qty), side: "buy",
           type: "limit", limit_price: limit.toFixed(2), time_in_force: "day" });

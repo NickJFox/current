@@ -3,8 +3,8 @@ import { AlpacaPaper } from "../../server/paper/alpaca.js";
 import { getTrendingCompanies } from "../../server/market-data.js";
 import { authorized, isProduction, netlifyEnabled, netlifyStore } from "../../server/paper/netlify.js";
 
-export default async function worker(request) {
-  if (request.method !== "POST" || !isProduction() || !authorized(request)) return new Response(null, { status: 403 });
+export default async function worker(request, context) {
+  if (request.method !== "POST" || !isProduction(context) || !authorized(request)) return new Response(null, { status: 403 });
   if (!netlifyEnabled()) return new Response(null, { status: 204 });
   const store = netlifyStore();
   if (!(await store.acquire())) return new Response(null, { status: 204 });

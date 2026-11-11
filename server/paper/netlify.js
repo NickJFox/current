@@ -5,7 +5,9 @@ import { BlobStore } from "./blob-store.js";
 export function netlifyStore() {
   return new BlobStore(getStore({ name: "momentum-paper-portfolio", consistency: "strong" }));
 }
-export function isProduction() { return process.env.CONTEXT === "production"; }
+export function isProduction(context) {
+  return context?.deploy?.context === "production" && context.deploy.published === true;
+}
 export function netlifyEnabled() { return process.env.PAPER_TRADING_ENABLED !== "false"; }
 export function signature(timestamp, secret = process.env.ALPACA_API_SECRET) {
   return createHmac("sha256", secret).update(`momentum-paper-worker:v1:${timestamp}`).digest("hex");

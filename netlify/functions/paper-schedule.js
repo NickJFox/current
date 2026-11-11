@@ -2,8 +2,8 @@ import { easternTime } from "../../server/paper/engine.js";
 import { isProduction, netlifyEnabled, signature } from "../../server/paper/netlify.js";
 
 // Scheduled functions have a short timeout: dispatch to a signed background job.
-export default async function schedule() {
-  if (!isProduction() || !netlifyEnabled() || !process.env.ALPACA_API_KEY || !process.env.ALPACA_API_SECRET) return;
+export default async function schedule(request, context) {
+  if (!isProduction(context) || !netlifyEnabled() || !process.env.ALPACA_API_KEY || !process.env.ALPACA_API_SECRET) return;
   const now = new Date();
   const { minute } = easternTime(now);
   if (minute < 9 * 60 + 25 || minute > 16 * 60 + 10) return;
