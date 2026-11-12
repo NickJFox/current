@@ -70,7 +70,7 @@ The container serves both the frontend and API from one origin. The host must al
 ## Automated paper portfolio
 
 The **Performance** section shows a $10,000 virtual strategy sleeve in a dedicated
-Alpaca paper account, open positions, trailing stops, orders, saved morning signals,
+Alpaca paper account, open positions, trailing stops, orders, saved intraday signals,
 observed drawdown, and a SPY benchmark. It refreshes every 30 seconds while open.
 The background worker runs independently of visitors; no daily buttons or browser
 sessions are required.
@@ -125,19 +125,24 @@ against a paper account: **never enable Netlify and Render/local workers against
 the same account**. They use different ledgers and cannot coordinate ownership.
 Keep the disk across deployments. Optional paid hosting and disks incur charges.
 
-### Strategy rules (version 1)
+### Strategy rules (version 2: all-day paper trading)
 
 - Use Alpaca's clock and exchange calendar for holidays, DST, and shortened days.
-- Start a single fresh momentum scan 15 minutes after the regular session opens
-  (normally 9:45 a.m. New York). Retry temporary failures until 9:55. Never recreate
-  a missed live signal from today's list later in the day.
+- Run a fresh momentum scan every five minutes starting 15 minutes after the
+  regular session opens, until 10 minutes before the exchange closes (normally
+  9:45 through 15:45 New York, with entries ending at 15:50). Temporary failures
+  retry within their five-minute slot. Missed slots are never backfilled; a worker
+  recovering in the afternoon can use the current slot's fresh signals.
 - Save the ranked list, relative volume, scan time, source time, and each decision.
-  The strategy version and 3% stop are fixed in the ledger.
-- Split 98% of available strategy cash equally across stocks not already held.
+  Each intraday scan records strategy version 2; the 3% stop stays unchanged.
+  Earlier morning-only history is preserved.
+- Split 98% of available strategy cash equally across stocks not already held or attempted that day.
+  Reserve outstanding buy commitments before sizing the next scan.
   Buy whole shares with a day limit at most 0.5% above a fresh ask, rounded up to a
   cent. Unsupported symbols, stale quotes, or an allocation smaller than one share
-  are recorded as skips. Spare cash is not redistributed that day. No borrowing
-  or pyramiding. Unfilled entries are canceled at the end of the entry window.
+  are recorded as skips. Spare cash and sale proceeds are eligible next scan.
+  No borrowing or pyramiding. Unfilled entries are canceled at the end of their
+  five-minute scan window; uncertain orders remain reserved until reconciled.
 - Reconcile fills each scheduled minute (15 seconds on the optional standalone
   server). Attach a 3% GTC trailing
   sell-stop after a fill. Cancel a partial entry's remainder before sizing its
@@ -149,14 +154,20 @@ Keep the disk across deployments. Optional paid hosting and disks incur charges.
   the trailing stop even if this server is down. Expired/canceled stops are
   recreated automatically. A definitively rejected stop triggers an automatic
   paper market-exit attempt on the next cycle.
-- A stock can be purchased again on a later trading day, never twice in a day's
-  scan. Already-held stocks are skipped. Proceeds become eligible next morning.
+- A stock can be purchased again on a later trading day, at most one entry attempt per symbol per
+  day across all scans. Already-held stocks are skipped. Proceeds become eligible
+  at the next scan; simulated cash limitations can leave later signals unpurchased.
 - SPY is a **price-return proxy** for the S&P 500, with fractional shadow shares,
   the same $10,000 starting capital, and a fresh bid at experiment start. It stays
   fully invested even while the strategy holds cash. Both reported returns exclude
   dividends and additional transaction costs; this is not an index total-return
   comparison or proof of achievable live profits. Alpaca paper fills have their
   own fill assumptions and do not model every real trading cost.
+  On version 2 activation, save current sleeve equity and a fresh SPY price as
+  a separate comparison baseline. The dashboard reports both returns and their
+  percentage-point difference since that moment, excluding earlier strategy
+  returns. Existing holdings carry into the new period; lifetime metrics and
+  the lifetime chart retain the full history.
 - IEX quotes are the default and represent one venue, while Nasdaq supplies scanner
   data. Set `ALPACA_DATA_FEED=sip` only with the appropriate Alpaca entitlement.
   The UI displays the benchmark quote timestamp and delayed updates.
@@ -168,7 +179,7 @@ across deploys. Strong reads, conditional ETag writes, and readback verification
 protect saved state. A 16-minute lease outlives the 15-minute Background Functions
 execution limit, so an invocation killed by Netlify recovers automatically after
 lease expiry. Normal runs release their lease immediately. A crash can therefore
-miss the morning entry window; accepted broker stops remain independent of it.
+miss intraday scan slots; accepted broker stops remain independent of it.
 The schedule is production-only and the background writer requires a signed,
 time-limited request. The public portfolio endpoint is read-only and excludes
 account IDs and secrets; it exposes simulated performance to website visitors.

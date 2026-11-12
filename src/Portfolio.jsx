@@ -5,7 +5,7 @@ const pct = (value) => value == null ? "—" : `${value >= 0 ? "+" : ""}${value.
 const time = (value) => value ? new Date(value).toLocaleString() : "Not yet";
 
 function EquityChart({ history, capital, startedAt }) {
-  if (!history.length) return <p className="portfolio-placeholder">The chart will build automatically after the first morning run.</p>;
+  if (!history.length) return <p className="portfolio-placeholder">The chart will build automatically after the first trading scan.</p>;
   const points = [{ at: startedAt || history[0].at, equity: capital, benchmark: capital }, ...history];
   const values = points.flatMap((p) => [p.equity, p.benchmark]).filter((v) => v != null);
   const min = Math.min(...values) * 0.998, max = Math.max(...values) * 1.002;
@@ -53,7 +53,7 @@ export default function Portfolio() {
     && (portfolio.status === "running" || (expected && portfolio.nextOpen && Date.now() >= Date.parse(portfolio.nextOpen)));
   const relative = m?.benchmarkReturnPercent == null ? null : m.returnPercent - m.benchmarkReturnPercent;
   return <section className="portfolio-section" id="performance" aria-labelledby="performance-title">
-    <div className="feed-head"><div><p className="section-label">Automated paper trading</p><h2 id="performance-title">Watch the strategy prove itself.</h2></div><p>Simulated money. Real signals. Updates automatically.</p></div>
+    <div className="feed-head"><div><p className="section-label">Automated paper trading</p><h2 id="performance-title">Test momentum against the market.</h2></div><p>Simulated money. Real signals. Updates automatically.</p></div>
     {error && <div className="portfolio-status attention" role="alert">{error} Retrying automatically.</div>}
     {!portfolio && !error && <div className="loading-state" role="status">Loading portfolio performance…</div>}
     {portfolio && <>
@@ -68,28 +68,38 @@ export default function Portfolio() {
         {[
           ["Portfolio value", money(m.equity), `${money(portfolio.capital)} starting capital`],
           ["Total profit / loss", money(m.profit), `${money(m.realizedProfit)} realized · ${money(m.unrealizedProfit)} unrealized`],
-          ["Portfolio return", pct(m.returnPercent), "Price returns before additional costs"],
-          ["SPY return", pct(m.benchmarkReturnPercent), relative == null ? "Starts with the first morning run" : `${relative >= 0 ? "+" : ""}${relative.toFixed(2)} percentage points vs SPY`],
+          ["Lifetime portfolio return", pct(m.returnPercent), "Includes earlier strategy versions"],
+          ["Lifetime SPY return", pct(m.benchmarkReturnPercent), relative == null ? "Starts with the first trading scan" : `${relative >= 0 ? "+" : ""}${relative.toFixed(2)} percentage points vs SPY`],
           ["Available cash", money(m.cash), `${m.positions} open positions`],
           ["Maximum drawdown", `${m.maxDrawdownPercent.toFixed(2)}%`, "From observed portfolio peaks"],
         ].map(([label, value, detail]) => <article className="portfolio-stat" key={label}><span>{label}</span><strong>{value}</strong><small>{detail}</small></article>)}
+      </div>
+      <div className="portfolio-panel"><h3>All-day strategy vs. SPY</h3>
+        {portfolio.intradayExperiment ? <>
+          <p>Strategy return <strong>{pct(m.intradayReturnPercent)}</strong> · SPY return <strong>{pct(m.intradayBenchmarkReturnPercent)}</strong> · Difference <strong>{m.intradayExcessReturnPercent == null ? "—" : `${m.intradayExcessReturnPercent >= 0 ? "+" : ""}${m.intradayExcessReturnPercent.toFixed(2)} percentage points`}</strong></p>
+          <small>Since {time(portfolio.intradayExperiment.startedAt)}. Both start with {money(portfolio.intradayExperiment.startEquity)}. Existing positions carry into this period. SPY is a price-return proxy for the S&amp;P 500. Paper results do not establish future profitability.</small>
+        </> : <p>Starts automatically with the first eligible all-day scan.</p>}
       </div>
       <div className="portfolio-panel"><h3>Portfolio vs. S&P 500 proxy</h3><EquityChart history={portfolio.history} capital={portfolio.capital} startedAt={portfolio.startedAt} />{portfolio.benchmark && <small>SPY quote as of {time(portfolio.benchmark.updatedAt)}</small>}{portfolio.benchmarkError && <p role="alert">Benchmark update delayed: {portfolio.benchmarkError}</p>}</div>
       <div className="portfolio-panel"><h3>Open positions</h3>
         <div className="portfolio-table-wrap"><table><thead><tr><th>Stock</th><th>Shares</th><th>Entry</th><th>Latest</th><th>Trailing stop</th><th>Unrealized P/L</th></tr></thead><tbody>
           {portfolio.positions.map((p) => <tr key={p.symbol}><td><strong>{p.symbol}</strong></td><td>{p.qty}</td><td>{money(Number(p.avg_entry_price))}</td><td>{money(Number(p.current_price))}</td><td>{p.stop ? money(Number(p.stop)) : "Attaching / updating"}</td><td>{money(Number(p.unrealized_pl))}</td></tr>)}
-          {!portfolio.positions.length && <tr><td colSpan="6">No open positions. Eligible purchases happen automatically during the morning scan.</td></tr>}
+          {!portfolio.positions.length && <tr><td colSpan="6">No open positions. Eligible purchases happen automatically during intraday scans when simulated cash is available.</td></tr>}
         </tbody></table></div>
       </div>
       <div className="portfolio-panel"><h3>Recent orders</h3><div className="portfolio-table-wrap"><table><thead><tr><th>Stock</th><th>Action</th><th>Filled shares</th><th>Fill price</th><th>Status</th><th>Time</th></tr></thead><tbody>
         {portfolio.orders.map((o) => <tr key={o.client_order_id}><td><strong>{o.symbol}</strong></td><td>{o.side === "buy" ? "Buy" : o.type === "trailing_stop" ? "Trailing exit" : "Protective exit"}</td><td>{o.filled_qty || "0"} / {o.qty}</td><td>{o.filled_avg_price ? money(Number(o.filled_avg_price)) : "—"}</td><td>{o.status.replaceAll("_", " ")}</td><td>{time(o.filled_at || o.created_at)}</td></tr>)}
         {!portfolio.orders.length && <tr><td colSpan="6">Orders and fills will appear here after activation.</td></tr>}
       </tbody></table></div></div>
-      <div className="portfolio-panel"><h3>Morning scan history</h3>
+      <div className="portfolio-panel"><h3>Momentum scan history</h3>
         {!portfolio.days.length && <p className="portfolio-placeholder">Each trading day’s momentum list and purchase decisions will be saved here.</p>}
-        {portfolio.days.map((run) => <details className="scan-history" key={run.day}><summary>{run.day} · {run.missed ? "Missed entry window" : `${run.signals.length} signals · ${run.complete ? "Complete" : "In progress"}`}</summary>
-          {run.reason && <p>{run.reason}</p>}
+        {portfolio.days.map((run) => <details className="scan-history" key={run.day}><summary>{run.day} · {Object.keys(run.scans || {}).length ? `${Object.keys(run.scans).length} intraday scans · ${run.complete ? "Complete" : "In progress"}` : run.missed ? "Missed entry window" : `${run.signals.length} signals · ${run.complete ? "Complete" : "In progress"}`}</summary>
+          {run.reason && <p>Earlier morning strategy: {run.reason}</p>}
           <ul>{run.signals.map((signal) => <li key={signal.ticker}><strong>{signal.ticker}</strong> · #{signal.rank} · {signal.relativeVolume?.toFixed(1)}× volume · {run.decisions[signal.ticker]?.reason || run.decisions[signal.ticker]?.status || "Pending"}</li>)}</ul>
+          {Object.entries(run.scans || {}).sort(([a], [b]) => Number(b) - Number(a)).map(([slot, scan]) => <details className="scan-history" key={slot}>
+            <summary>{time(scan.scannedAt)} · {scan.signals.length} signals · {scan.complete ? "Complete" : "In progress"}</summary>
+            <ul>{scan.signals.map((signal) => <li key={signal.ticker}><strong>{signal.ticker}</strong> · #{signal.rank} · {signal.relativeVolume?.toFixed(1)}× volume · {scan.decisions[signal.ticker]?.reason || scan.decisions[signal.ticker]?.status || "Pending"}</li>)}</ul>
+          </details>)}
         </details>)}
       </div>
       <p className="portfolio-methodology">{portfolio.methodology} Starts {time(portfolio.startedAt)}. Stop orders may execute below their trigger price after a gap. Whole-share sizing or unsupported symbols may leave some signals unpurchased.</p>

@@ -1,6 +1,8 @@
 const TERMINAL = new Set(["filled", "canceled", "expired", "rejected", "replaced"]);
 const number = (value) => Number(value) || 0;
 const minute = (time) => { const [h, m] = time.split(":").map(Number); return h * 60 + m; };
+const SCAN_MINUTES = 5;
+const STRATEGY_VERSION = 2;
 
 export function easternTime(date) {
   const parts = new Intl.DateTimeFormat("en-CA", { timeZone: "America/New_York", year: "numeric",
@@ -31,16 +33,23 @@ export function summarize(state) {
   peak = Math.max(peak, state.equityPeak || state.capital, equity);
   drawdown = Math.max(drawdown, (peak - equity) / peak * 100);
   const benchmarkValue = state.benchmark ? state.capital * state.benchmark.lastPrice / state.benchmark.entryPrice : null;
+  const experiment = state.intradayExperiment;
+  const intradayReturnPercent = experiment ? (equity / experiment.startEquity - 1) * 100 : null;
+  const intradayBenchmarkReturnPercent = experiment && state.benchmark
+    ? (state.benchmark.lastPrice / experiment.spyEntryPrice - 1) * 100 : null;
   return { cash, equity, profit, realizedProfit: realized, unrealizedProfit: unrealized,
     returnPercent: profit / state.capital * 100, benchmarkValue,
     benchmarkReturnPercent: benchmarkValue === null ? null : (benchmarkValue / state.capital - 1) * 100,
     maxDrawdownPercent: drawdown, positions: state.positions.length,
-    filledOrders: state.orders.filter((o) => number(o.filled_qty) > 0).length };
+    filledOrders: state.orders.filter((o) => number(o.filled_qty) > 0).length,
+    intradayReturnPercent, intradayBenchmarkReturnPercent,
+    intradayExcessReturnPercent: intradayReturnPercent === null || intradayBenchmarkReturnPercent === null
+      ? null : intradayReturnPercent - intradayBenchmarkReturnPercent };
 }
 
 function publicOrder(order) {
   return Object.fromEntries(["id", "client_order_id", "symbol", "side", "type", "status", "qty", "filled_qty",
-    "filled_avg_price", "filled_at", "created_at", "stop_price", "hwm", "trail_percent"].map((key) => [key, order[key] ?? null]));
+    "filled_avg_price", "filled_at", "created_at", "limit_price", "stop_price", "hwm", "trail_percent"].map((key) => [key, order[key] ?? null]));
 }
 
 export class PaperEngine {
@@ -65,6 +74,12 @@ export class PaperEngine {
     const intent = this.state.intents[key];
     let order = await this.provider.order(key);
     if (!order) {
+      if (intent.body.side === "buy") {
+        const observed = easternTime(this.now());
+        if (observed.day !== intent.day || observed.minute < intent.scanTarget || observed.minute >= intent.expiresAtMinute) {
+          throw new Error("Entry scan window ended before submission; buy was not sent.");
+        }
+      }
       try { order = await this.provider.submit(intent.body); }
       catch (error) {
         if (![403, 422].includes(error.status)) throw error;
@@ -82,7 +97,7 @@ export class PaperEngine {
       if (old && TERMINAL.has(old.status)) continue;
       const order = await this.provider.order(id);
       if (order) this.record(order);
-      // Only protective exits are retried outside the morning window below.
+      // Only protective exits are retried outside the current scan window below.
       // An uncertain buy is looked up again; it is not recreated hours later.
       else if (intent.body.side === "sell") await this.place(id, intent.body);
     }
@@ -140,20 +155,33 @@ export class PaperEngine {
     const age = this.now().getTime() - Date.parse(timestamp);
     return Number.isFinite(age) && age >= -5_000 && age <= 90_000;
   }
-  async scan(day, account, target) {
-    let run = this.state.days[day];
+  async scan(day, account, target, cutoff) {
+    const slot = String(target);
+    const daily = this.state.days[day] ||= { signals: [], decisions: {}, complete: false };
+    daily.scans ||= {};
+    let run = daily.scans[slot];
     if (!run) {
       const signal = await this.scanner();
-      if (signal.stale || !this.fresh(signal.updatedAt)) throw new Error("Fresh momentum scan unavailable; morning scan will retry.");
+      if (signal.stale || !this.fresh(signal.updatedAt)) throw new Error("Fresh momentum scan unavailable; intraday scan will retry.");
       const companies = signal.companies.filter((c) => /^[A-Z0-9.-]{1,10}$/.test(c.ticker));
-      run = { scannedAt: this.now().toISOString(), sourceAt: signal.updatedAt,
+      run = { strategyVersion: STRATEGY_VERSION, target, expiresAtMinute: Math.min(target + SCAN_MINUTES, cutoff),
+        scannedAt: this.now().toISOString(), sourceAt: signal.updatedAt,
         signals: companies.map((c, index) => ({ ticker: c.ticker, rank: index + 1, price: c.price, relativeVolume: c.relativeVolume })),
         decisions: {}, complete: false };
+      // Account cash includes outstanding buy commitments. Reserve their unfilled
+      // limit value, including old intents whose broker response remains uncertain.
+      const reserved = Object.entries(this.state.intents).reduce((sum, [id, intent]) => {
+        if (intent.body.side !== "buy") return sum;
+        const order = this.state.orders.find((o) => o.client_order_id === id);
+        if (order && TERMINAL.has(order.status)) return sum;
+        return sum + Math.max(0, number(intent.body.qty) - number(order?.filled_qty)) * number(intent.body.limit_price);
+      }, 0);
       const strategyCash = this.state.accountBaseline ? number(account.cash) - this.state.accountBaseline.cash + this.state.capital : summarize(this.state).cash;
-      const available = Math.max(0, Math.min(strategyCash, number(account.cash)));
-      const candidates = run.signals.filter((c) => !this.state.positions.some((p) => p.symbol === c.ticker));
+      const available = Math.max(0, Math.min(strategyCash, number(account.cash)) - reserved);
+      const candidates = run.signals.filter((c) => !this.state.positions.some((p) => p.symbol === c.ticker)
+        && !this.state.intents[`cm-buy-${day}-${c.ticker}`]);
       run.perStock = candidates.length ? available * 0.98 / candidates.length : 0;
-      this.state.days[day] = run;
+      daily.scans[slot] = run;
       await this.save();
     }
     if (run.complete) return;
@@ -161,15 +189,22 @@ export class PaperEngine {
       const symbol = signal.ticker;
       if (run.decisions[symbol]) continue;
       const observed = easternTime(this.now());
-      if (observed.day !== day || observed.minute >= target + 10 || observed.minute < target) {
-        run.decisions[symbol] = { status: "skipped", reason: "Morning entry window ended" };
+      if (observed.day !== day || observed.minute >= run.expiresAtMinute || observed.minute < target) {
+        run.decisions[symbol] = { status: "skipped", reason: "Scan entry window ended" };
         await this.save(); continue;
       }
       const id = `cm-buy-${day}-${symbol}`;
       // Recover an already persisted intent even if the process stopped before the broker response.
       if (this.state.intents[id]) {
-        const recovered = await this.place(id, this.state.intents[id].body);
-        run.decisions[symbol] = { status: recovered.status === "rejected" ? "rejected" : "submitted", orderId: id };
+        // A later scan may observe a previous fill or stop-out. Never buy the
+        // same symbol twice that day or recreate an expired uncertain intent.
+        const intent = this.state.intents[id];
+        if (intent.scanTarget !== target) {
+          run.decisions[symbol] = { status: "skipped", reason: "Already attempted today", orderId: id };
+        } else {
+          const recovered = await this.place(id, intent.body);
+          run.decisions[symbol] = { status: recovered.status === "rejected" ? "rejected" : "submitted", orderId: id };
+        }
         await this.save(); continue;
       }
       if (this.state.positions.some((p) => p.symbol === symbol)) {
@@ -190,18 +225,24 @@ export class PaperEngine {
         run.decisions[symbol] = { status: "skipped", reason: "No fresh executable quote" }; await this.save(); continue;
       }
       // Whole shares support broker-hosted trailing stops. A capped limit order bounds
-      // spending even if price jumps; leftover cash stays idle until tomorrow.
+      // spending even if price jumps; leftover cash is eligible next scan.
       const limit = Math.ceil(number(quote.ap) * 1.005 * 100) / 100;
       const qty = Math.floor(run.perStock / limit);
       if (qty < 1) {
         run.decisions[symbol] = { status: "skipped", reason: "Insufficient cash for one share" }; await this.save(); continue;
       }
       const beforeSubmit = easternTime(this.now());
-      if (beforeSubmit.day !== day || beforeSubmit.minute >= target + 10) {
-        run.decisions[symbol] = { status: "skipped", reason: "Morning entry window ended" };
+      if (beforeSubmit.day !== day || beforeSubmit.minute >= run.expiresAtMinute || beforeSubmit.minute < target) {
+        run.decisions[symbol] = { status: "skipped", reason: "Scan entry window ended" };
         await this.save(); continue;
       }
       try {
+        // Store the scan identity with the order intent before any submission.
+        this.state.intents[id] = { body: { client_order_id: id, symbol, qty: String(qty), side: "buy",
+          type: "limit", limit_price: limit.toFixed(2), time_in_force: "day" },
+          createdAt: this.now().toISOString(), scanTarget: target,
+          expiresAtMinute: run.expiresAtMinute, day };
+        await this.save();
         const order = await this.place(id, { client_order_id: id, symbol, qty: String(qty), side: "buy",
           type: "limit", limit_price: limit.toFixed(2), time_in_force: "day" });
         run.decisions[symbol] = { status: order.status === "rejected" ? "rejected" : "submitted", orderId: id };
@@ -218,11 +259,16 @@ export class PaperEngine {
     run.complete = true;
     await this.save();
   }
-  async cancelLateEntries() {
+  async cancelLateEntries(day, current, entryAllowed) {
     for (const order of this.state.orders.filter((o) => o.side === "buy" && !TERMINAL.has(o.status))) {
+      const intent = this.state.intents[order.client_order_id];
+      if (entryAllowed && intent?.day === day && current < intent.expiresAtMinute) continue;
       try { await this.provider.cancel(order.id); }
       catch (error) { if (![404, 422].includes(error.status)) throw error; }
+      const refreshed = await this.provider.order(order.client_order_id);
+      if (refreshed) this.record(refreshed);
     }
+    await this.save();
   }
   async tick() {
     if (this.busy) return;
@@ -258,45 +304,57 @@ export class PaperEngine {
       const knownIds = new Set(Object.keys(this.state.intents));
       if (openOrders.some((o) => !knownIds.has(o.client_order_id))) throw new Error("Unexpected open order. This automation requires a dedicated paper account.");
       await this.syncOrders();
+      const firstEntry = session ? minute(session.open) + 15 : null;
+      const cutoff = session ? minute(session.close) - 10 : null;
+      const entryWindow = Boolean(clock.is_open && session && current >= firstEntry && current < cutoff);
+      await this.cancelLateEntries(day, current, entryWindow);
       const positions = await this.provider.positions();
       this.state.positions = positions.map((p) => ({ symbol: p.symbol, qty: p.qty, avg_entry_price: p.avg_entry_price,
         current_price: p.current_price, market_value: p.market_value, unrealized_pl: p.unrealized_pl }));
       // Protection and recovery run before scanning, including after restarts and outside entry hours.
       await this.protect(positions);
-      const target = session ? minute(session.open) + 15 : null;
-      const entryWindow = clock.is_open && session && current >= target && current < target + 10;
+      const target = entryWindow ? firstEntry + Math.floor((current - firstEntry) / SCAN_MINUTES) * SCAN_MINUTES : null;
       if (clock.is_open && (this.state.startedAt || entryWindow)) {
         try { await this.benchmark(); }
         catch (error) {
           // Once invested, a missing benchmark must never prevent stop maintenance.
-          if (!this.state.startedAt) throw error;
+          if (!this.state.startedAt || (entryWindow && !this.state.intradayExperiment)) throw error;
           this.state.benchmarkError = error.message;
         }
       }
       if (entryWindow) {
+        const entryAccount = await this.provider.account();
+        if (entryAccount.id !== this.state.accountId) throw new Error("Paper account identity changed before scan.");
         if (!this.state.startedAt) {
           this.state.startedAt = this.now().toISOString();
           await this.save();
         }
-        await this.scan(day, account, target);
+        if (!this.state.intradayExperiment) {
+          const startEquity = this.state.capital + number(entryAccount.equity || entryAccount.cash) - this.state.accountBaseline.equity;
+          if (startEquity <= 0) throw new Error("Strategy sleeve has no remaining equity.");
+          this.state.intradayExperiment = { strategyVersion: STRATEGY_VERSION, startedAt: this.now().toISOString(),
+            startEquity, spyEntryPrice: this.state.benchmark.lastPrice, spySourceAt: this.state.benchmark.updatedAt };
+          this.state.strategyVersion = STRATEGY_VERSION;
+          await this.save();
+        }
+        await this.scan(day, entryAccount, target, cutoff);
         // Attach stops immediately if the paper broker filled entries synchronously.
         await this.syncOrders();
         const updated = await this.provider.positions();
         this.state.positions = updated.map((p) => ({ symbol: p.symbol, qty: p.qty, avg_entry_price: p.avg_entry_price,
           current_price: p.current_price, market_value: p.market_value, unrealized_pl: p.unrealized_pl }));
         await this.protect(updated);
-      } else if (session && current >= target + 10) {
-        await this.cancelLateEntries();
-        if (this.state.days[day] && !this.state.days[day].complete) {
-          const run = this.state.days[day];
-          for (const signal of run.signals) {
-            if (!run.decisions[signal.ticker]) run.decisions[signal.ticker] = { status: "skipped", reason: "Morning entry window ended" };
-          }
-          run.complete = true;
-        }
-        if (!this.state.days[day]) this.state.days[day] = { complete: true, missed: true,
-          reason: "Worker was unavailable during the morning entry window; no historical signals invented.", signals: [], decisions: {} };
       }
+      // Close only scans actually observed. Missed slots are never backfilled.
+      const daily = this.state.days[day];
+      for (const run of Object.values(daily?.scans || {})) {
+        if (current < run.expiresAtMinute || run.complete) continue;
+        for (const signal of run.signals) {
+          if (!run.decisions[signal.ticker]) run.decisions[signal.ticker] = { status: "skipped", reason: "Scan entry window ended" };
+        }
+        run.complete = true;
+      }
+      if (daily?.scans) daily.complete = current >= cutoff;
       // A single account snapshot is the valuation source of truth. Separate fills
       // and position endpoints can briefly straddle a fill and fabricate a loss.
       const mark = await this.provider.account();
@@ -313,7 +371,7 @@ export class PaperEngine {
         else this.state.snapshots.push(point);
       }
       this.state.status = clock.is_open ? "running" : "market_closed";
-      this.state.message = clock.is_open ? "Automatic paper trading active. Morning entries; broker-hosted trailing stops."
+      this.state.message = clock.is_open ? "Automatic paper trading active. Momentum scans every five minutes; broker-hosted trailing stops."
         : "Market closed. Automation resumes next session; trailing stops trigger in regular hours.";
       this.state.nextOpen = clock.next_open;
       this.state.lastSuccessAt = this.now().toISOString();

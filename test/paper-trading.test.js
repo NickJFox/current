@@ -10,6 +10,7 @@ import { AlpacaPaper } from "../server/paper/alpaca.js";
 const AT = "2026-11-11T14:46:00.000Z";
 function fixture() {
   let current = new Date(AT), scans = 0;
+  let signals = [{ ticker: "TEST", price: 100, relativeVolume: 3 }];
   const data = emptyState();
   const store = { data, async read() { return structuredClone(this.data); }, async write(s) { this.data = structuredClone(s); } };
   const orders = new Map(); let holdings = [];
@@ -39,9 +40,10 @@ function fixture() {
       return order;
     },
   };
-  const scanner = async () => { scans++; return { stale: false, updatedAt: current.toISOString(), companies: [{ ticker: "TEST", price: 100, relativeVolume: 3 }] }; };
+  const scanner = async () => { scans++; return { stale: false, updatedAt: current.toISOString(), companies: structuredClone(signals) }; };
   const make = () => new PaperEngine({ store, provider, scanner, now: () => current });
   return { store, provider, orders, submitted, canceled, make, scans: () => scans,
+    setSignals: (value) => { signals = value; },
     setTime: (at) => { current = new Date(at); }, setHoldings: (positions) => { holdings = positions; } };
 }
 
@@ -92,12 +94,13 @@ test("stale signals are rejected and retried without buys", async () => {
   await f.make().tick(); assert.equal(f.submitted.length, 2);
 });
 
-test("holidays and missed entry windows do not invent historical signals", async () => {
+test("holidays do not scan; afternoon recovery scans fresh signals", async () => {
   const f = fixture(); f.provider.calendar = async () => [];
   f.provider.clock = async () => ({ timestamp: AT, is_open: false });
   await f.make().tick(); assert.equal(f.scans(), 0); assert.equal(f.submitted.length, 0);
   const late = fixture(); late.setTime("2026-11-11T15:10:00Z");
-  await late.make().tick(); assert.equal(late.scans(), 0); assert.equal(late.store.data.days["2026-11-11"].missed, true);
+  await late.make().tick(); assert.equal(late.scans(), 1); assert.equal(late.submitted.filter((o) => o.side === "buy").length, 1);
+  assert.deepEqual(Object.keys(late.store.data.days["2026-11-11"].scans), ["610"]);
 });
 
 test("first activation refuses existing holdings without changing them", async () => {
@@ -110,7 +113,7 @@ test("a canceled stop is automatically replaced, including outside the morning w
   const stop = [...f.orders.values()].find((o) => o.side === "sell"); stop.status = "canceled";
   f.setTime("2026-11-11T18:00:00Z"); await f.make().tick();
   assert.equal(f.submitted.filter((o) => o.type === "trailing_stop").length, 2);
-  assert.equal(f.scans(), 1);
+  assert.equal(f.scans(), 2);
 });
 
 test("definitively rejected protection triggers a paper market exit next cycle", async () => {
@@ -193,12 +196,12 @@ test("new equity highs do not retroactively create drawdowns", () => {
 test("a slow scan that finishes after the entry window cannot submit late buys", async () => {
   const f = fixture(), engine = f.make(), scan = engine.scanner;
   engine.scanner = async () => {
-    f.setTime("2026-11-11T15:00:00Z");
+    f.setTime("2026-11-11T14:50:00Z");
     return scan();
   };
   await engine.tick();
   assert.equal(f.submitted.length, 0);
-  assert.equal(f.store.data.days["2026-11-11"].decisions.TEST.reason, "Morning entry window ended");
+  assert.equal(f.store.data.days["2026-11-11"].scans["585"].decisions.TEST.reason, "Scan entry window ended");
 });
 
 test("provider account marks prevent a fill/position timing race from fabricating drawdown", () => {
@@ -209,4 +212,137 @@ test("provider account marks prevent a fill/position timing race from fabricatin
   state.accountMark = { equity: 100100, cash: 100100 };
   assert.equal(summarize(state).equity, 10100);
   assert.equal(summarize(state).maxDrawdownPercent, 0);
+});
+
+test("five-minute scans survive restarts and can buy new afternoon signals", async () => {
+  const f = fixture(); await f.make().tick();
+  f.setTime("2026-11-11T14:49:00Z"); await f.make().tick();
+  assert.equal(f.scans(), 1);
+  f.setSignals([{ ticker: "NEW", price: 100, relativeVolume: 2 }]);
+  f.setTime("2026-11-11T18:00:00Z"); await f.make().tick();
+  assert.equal(f.scans(), 2);
+  assert.equal(f.submitted.filter((o) => o.side === "buy").length, 2);
+  assert.equal(f.submitted.filter((o) => o.type === "trailing_stop").length, 2);
+  assert.ok(f.submitted.some((o) => o.symbol === "NEW" && o.side === "buy"));
+  const scans = f.store.data.days["2026-11-11"].scans;
+  assert.deepEqual(Object.keys(scans), ["585", "780"]);
+  assert.equal(scans["780"].strategyVersion, 2);
+});
+
+test("a stopped-out symbol cannot be bought again by a later same-day scan", async () => {
+  const f = fixture(); await f.make().tick();
+  const stop = [...f.orders.values()].find((o) => o.side === "sell");
+  stop.status = "filled"; stop.filled_qty = stop.qty; stop.filled_avg_price = "97";
+  f.setHoldings([]);
+  f.setTime("2026-11-11T14:51:00Z"); await f.make().tick();
+  assert.equal(f.scans(), 2);
+  assert.equal(f.submitted.filter((o) => o.side === "buy").length, 1);
+  assert.equal(f.store.data.days["2026-11-11"].scans["590"].decisions.TEST.reason, "Already attempted today");
+});
+
+test("open entries expire at the next slot and cannot be recreated by later scans", async () => {
+  const f = fixture(), submit = f.provider.submit;
+  f.provider.submit = async (body) => {
+    const order = await submit(body);
+    if (body.side === "buy") {
+      order.status = "new"; order.filled_qty = "0"; order.filled_avg_price = null;
+      f.setHoldings([]);
+    }
+    return order;
+  };
+  await f.make().tick();
+  f.setTime("2026-11-11T14:49:00Z"); await f.make().tick();
+  assert.equal(f.canceled.length, 0);
+  f.setTime("2026-11-11T14:50:00Z"); await f.make().tick();
+  assert.equal(f.canceled.length, 1);
+  assert.equal(f.submitted.filter((o) => o.side === "buy").length, 1);
+});
+
+test("cancel-pending entry commitments remain reserved for subsequent scans", async () => {
+  const f = fixture(), submit = f.provider.submit;
+  f.provider.submit = async (body) => {
+    const order = await submit(body);
+    if (body.side === "buy") {
+      order.status = "new"; order.filled_qty = "0"; order.filled_avg_price = null;
+      f.setHoldings([]);
+    }
+    return order;
+  };
+  f.provider.cancel = async (id) => { f.canceled.push(id); }; // cancellation not yet acknowledged
+  await f.make().tick();
+  f.setSignals([{ ticker: "NEW", price: 100, relativeVolume: 2 }]);
+  f.setTime("2026-11-11T14:50:00Z"); await f.make().tick();
+  const buys = f.submitted.filter((o) => o.side === "buy");
+  assert.equal(buys.length, 2);
+  assert.ok(buys.reduce((sum, o) => sum + Number(o.qty) * Number(o.limit_price), 0) <= 10000);
+});
+
+test("entries stop ten minutes before regular or early close; protection still runs", async () => {
+  for (const [close, at] of [["16:00", "2026-11-11T20:50:00Z"], ["13:00", "2026-11-11T17:50:00Z"]]) {
+    const f = fixture();
+    f.provider.calendar = async () => [{ open: "09:30", close }];
+    await f.make().tick();
+    const stop = [...f.orders.values()].find((o) => o.side === "sell"); stop.status = "canceled";
+    f.setTime(at); await f.make().tick();
+    assert.equal(f.scans(), 1);
+    assert.equal(f.submitted.filter((o) => o.type === "trailing_stop").length, 2);
+    assert.equal(f.store.data.days["2026-11-11"].complete, true);
+  }
+});
+
+test("all-day comparison starts at current equity and SPY without resetting lifetime history", async () => {
+  const f = fixture();
+  Object.assign(f.store.data, {
+    startedAt: "2026-11-10T14:45:00Z", accountId: "paper-test",
+    accountBaseline: { equity: 99000, cash: 99000 },
+    benchmark: { entryPrice: 90, lastPrice: 99.9 },
+    snapshots: [{ at: "2026-11-10T15:00:00Z", equity: 10500, benchmark: 10500 }],
+  });
+  await f.make().tick();
+  const experiment = f.store.data.intradayExperiment;
+  assert.equal(experiment.startEquity, 11000);
+  assert.equal(experiment.spyEntryPrice, 99.9);
+  assert.equal(f.store.data.benchmark.entryPrice, 90);
+  assert.equal(f.store.data.startedAt, "2026-11-10T14:45:00Z");
+  const state = structuredClone(f.store.data);
+  state.accountMark.equity = 100220; // sleeve grows from 11,000 to 11,220: +2%
+  state.benchmark.lastPrice = 100.899; // SPY +1%
+  const metrics = summarize(state);
+  assert.ok(Math.abs(metrics.intradayReturnPercent - 2) < 1e-8);
+  assert.ok(Math.abs(metrics.intradayBenchmarkReturnPercent - 1) < 1e-8);
+  assert.ok(Math.abs(metrics.intradayExcessReturnPercent - 1) < 1e-8);
+});
+
+test("a slow order lookup crossing the scan boundary cannot submit a late buy", async () => {
+  const f = fixture(), lookup = f.provider.order;
+  f.provider.order = async (id) => {
+    if (id.startsWith("cm-buy-")) f.setTime("2026-11-11T14:50:00Z");
+    return lookup(id);
+  };
+  await f.make().tick();
+  assert.equal(f.submitted.length, 0);
+  assert.match(f.store.data.lastError, /Entry scan window ended before submission/);
+  await f.make().tick(); // next slot sees the intent; it must never recreate it
+  assert.equal(f.submitted.length, 0);
+});
+
+test("new strategy preserves a legacy missed morning and can scan that afternoon", async () => {
+  const f = fixture();
+  f.store.data.days["2026-11-11"] = { missed: true, complete: true, reason: "Legacy missed entry", signals: [], decisions: {} };
+  f.setTime("2026-11-11T18:01:00Z"); await f.make().tick();
+  const daily = f.store.data.days["2026-11-11"];
+  assert.equal(daily.reason, "Legacy missed entry");
+  assert.ok(daily.scans["780"]);
+  assert.equal(f.submitted.filter((o) => o.side === "buy").length, 1);
+});
+
+test("failed SPY refresh cannot block protective stops once the comparison has started", async () => {
+  const f = fixture(); await f.make().tick();
+  const stop = [...f.orders.values()].find((o) => o.side === "sell"); stop.status = "canceled";
+  const quote = f.provider.quote;
+  f.provider.quote = async (symbol) => { if (symbol === "SPY") throw new Error("SPY unavailable"); return quote(symbol); };
+  f.setTime("2026-11-11T18:00:00Z"); await f.make().tick();
+  assert.equal(f.submitted.filter((o) => o.type === "trailing_stop").length, 2);
+  assert.equal(f.store.data.benchmarkError, "SPY unavailable");
+  assert.equal(f.store.data.status, "running");
 });
