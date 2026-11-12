@@ -24,6 +24,7 @@ function App() {
   const [status, setStatus] = useState("loading");
   const [error, setError] = useState("");
   const [updatedAt, setUpdatedAt] = useState(null);
+  const [scanInfo, setScanInfo] = useState(null);
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState("All");
   const [selected, setSelected] = useState(null);
@@ -40,6 +41,7 @@ function App() {
       if (!response.ok) throw new Error(payload.error || "Could not load market data.");
       setCompanies(payload.companies);
       setUpdatedAt(payload.updatedAt);
+      setScanInfo({ source: payload.source, universe: payload.universe, stale: payload.stale });
       setStatus("ready");
     } catch (loadError) {
       setError(loadError.message);
@@ -49,6 +51,8 @@ function App() {
 
   useEffect(() => {
     loadCompanies();
+    const interval = setInterval(loadCompanies, 5 * 60 * 1000);
+    return () => clearInterval(interval);
   }, [loadCompanies]);
 
   useEffect(() => {
@@ -140,6 +144,10 @@ function App() {
             <p>Positive price movers ranked by today’s volume pace versus their own daily average.</p>
           </div>
 
+          {status === "ready" && scanInfo && <p className="portfolio-methodology">
+            Source: {scanInfo.source}. {scanInfo.universe} {scanInfo.stale ? "Showing cached data while the provider is unavailable." : ""}
+          </p>}
+
           {status === "loading" && (
             <div className="loading-state" role="status">
               <span className="loading-spinner" />
@@ -182,9 +190,9 @@ function App() {
 
           {status === "ready" && visibleCompanies.length === 0 && (
             <div className="empty-state">
-              <strong>No companies found</strong>
-              <p>Try a different company, ticker, or topic.</p>
-              <button type="button" onClick={() => { setQuery(""); setFilter("All"); }}>Clear search</button>
+              <strong>{companies.length ? "No companies found" : "No qualifying momentum stocks right now"}</strong>
+              <p>{companies.length ? "Try a different company, ticker, or topic." : "The scan completed, but no stocks met the current price and volume criteria. Updates every five minutes."}</p>
+              <button type="button" onClick={() => { if (companies.length) { setQuery(""); setFilter("All"); } else loadCompanies(); }}>{companies.length ? "Clear search" : "Refresh scan"}</button>
             </div>
           )}
         </section>

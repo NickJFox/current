@@ -98,6 +98,7 @@ export default function Portfolio() {
           <ul>{run.signals.map((signal) => <li key={signal.ticker}><strong>{signal.ticker}</strong> · #{signal.rank} · {signal.relativeVolume?.toFixed(1)}× volume · {run.decisions[signal.ticker]?.reason || run.decisions[signal.ticker]?.status || "Pending"}</li>)}</ul>
           {Object.entries(run.scans || {}).sort(([a], [b]) => Number(b) - Number(a)).map(([slot, scan]) => <details className="scan-history" key={slot}>
             <summary>{time(scan.scannedAt)} · {scan.signals.length} signals · {scan.complete ? "Complete" : "In progress"}</summary>
+            {scan.source && <p>{scan.source}. {scan.universe}</p>}
             <ul>{scan.signals.map((signal) => <li key={signal.ticker}><strong>{signal.ticker}</strong> · #{signal.rank} · {signal.relativeVolume?.toFixed(1)}× volume · {scan.decisions[signal.ticker]?.reason || scan.decisions[signal.ticker]?.status || "Pending"}</li>)}</ul>
           </details>)}
         </details>)}

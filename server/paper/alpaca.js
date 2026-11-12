@@ -14,10 +14,10 @@ export class AlpacaPaper {
     this.key = key; this.secret = secret; this.feed = feed; this.fetcher = fetcher;
   }
   get configured() { return Boolean(this.key && this.secret); }
-  async request(path, { method = "GET", body, data = false } = {}) {
+  async request(path, { method = "GET", body, data = false, signal } = {}) {
     // Trading origin is deliberately fixed: this code cannot place live-money orders.
     const response = await this.fetcher(`${data ? DATA : PAPER}${path}`, {
-      method, signal: AbortSignal.timeout(12_000),
+      method, signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(12_000)]) : AbortSignal.timeout(12_000),
       headers: { "APCA-API-KEY-ID": this.key, "APCA-API-SECRET-KEY": this.secret,
         "Content-Type": "application/json" },
       ...(body ? { body: JSON.stringify(body) } : {}),

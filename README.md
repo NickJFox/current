@@ -65,6 +65,8 @@ The container serves both the frontend and API from one origin. The host must al
 - Nasdaq’s public endpoints used here are undocumented. Before commercial use, confirm data-display rights and migrate `server/market-data.js` to a contracted provider with a documented SLA.
 - Relative volume is adjusted linearly by elapsed regular-session time. Historical intraday volume curves would provide a more accurate opening-bell comparison.
 - When Nasdaq omits average volume from quote summaries, the scanner averages up to 30 completed daily sessions (at least 10 required), excluding today. This baseline is cached per symbol for the Eastern calendar day.
+- Nasdaq scans have a 12-second total budget and fetch daily history directly, avoiding redundant quote-summary requests. If Nasdaq fails and Alpaca credentials are configured, a read-only Alpaca market-data fallback uses the union of its 100 most-active stocks and 50 top gainers. It ranks positive movers using current volume and up to 30 completed daily bars from the same configured feed (IEX by default). This fallback retains the $2 price and 500K feed-share minimums, but cannot apply Nasdaq's market-cap screen. The scanner displays its source and universe, and each paper scan records them. Data entitlements can affect fallback availability.
+- A valid scan with no qualifying stocks returns an empty result, distinct from provider errors. The browser refreshes the scanner every five minutes. Cached results are labeled stale and cannot trigger paper entries.
 - News is labeled as possible context, not a proven cause of price movement.
 
 ## Automated paper portfolio
@@ -169,7 +171,9 @@ Keep the disk across deployments. Optional paid hosting and disks incur charges.
   returns. Existing holdings carry into the new period; lifetime metrics and
   the lifetime chart retain the full history.
 - IEX quotes are the default and represent one venue, while Nasdaq supplies scanner
-  data. Set `ALPACA_DATA_FEED=sip` only with the appropriate Alpaca entitlement.
+  data with Alpaca market data as a fallback during Nasdaq failures. The fallback
+  compares IEX volume only with IEX historical volume (or SIP with SIP).
+  Set `ALPACA_DATA_FEED=sip` only with the appropriate Alpaca entitlement.
   The UI displays the benchmark quote timestamp and delayed updates.
 
 ### Reliability and storage

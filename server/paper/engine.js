@@ -165,7 +165,7 @@ export class PaperEngine {
       if (signal.stale || !this.fresh(signal.updatedAt)) throw new Error("Fresh momentum scan unavailable; intraday scan will retry.");
       const companies = signal.companies.filter((c) => /^[A-Z0-9.-]{1,10}$/.test(c.ticker));
       run = { strategyVersion: STRATEGY_VERSION, target, expiresAtMinute: Math.min(target + SCAN_MINUTES, cutoff),
-        scannedAt: this.now().toISOString(), sourceAt: signal.updatedAt,
+        scannedAt: this.now().toISOString(), sourceAt: signal.updatedAt, source: signal.source || "Nasdaq", universe: signal.universe || null,
         signals: companies.map((c, index) => ({ ticker: c.ticker, rank: index + 1, price: c.price, relativeVolume: c.relativeVolume })),
         decisions: {}, complete: false };
       // Account cash includes outstanding buy commitments. Reserve their unfilled
