@@ -9,6 +9,7 @@ const state = {
   trendingAt: 0,
   trendingRequest: null,
   news: new Map(),
+  averages: new Map(),
 };
 
 export function parseNumber(value) {
@@ -116,13 +117,44 @@ function toCompany(stock, index, relativeVolume, averageVolume) {
   };
 }
 
+export function historicalAverageVolume(rows, beforeDay) {
+  const volumes = (rows || [])
+    .filter((row) => {
+      const date = new Date(row.date);
+      return Number.isFinite(date.getTime()) && date.toISOString().slice(0, 10) < beforeDay;
+    })
+    .sort((a, b) => new Date(b.date) - new Date(a.date))
+    .slice(0, 30)
+    .map((row) => parseNumber(row.volume))
+    .filter((volume) => volume > 0);
+  return volumes.length >= 10 ? volumes.reduce((sum, volume) => sum + volume, 0) / volumes.length : 0;
+}
+
 async function addAverageVolume(item) {
   try {
+    const day = new Intl.DateTimeFormat("en-CA", { timeZone: "America/New_York" }).format(new Date());
+    const key = `${day}:${item.stock.symbol}`;
+    if (state.averages.has(key)) return { ...item, averageVolume: state.averages.get(key) };
     const payload = await fetchJson(
       `${NASDAQ_BASE}/quote/${encodeURIComponent(item.stock.symbol)}/summary?assetclass=stocks`,
       1,
     );
-    const averageVolume = parseNumber(payload?.data?.summaryData?.AverageVolume?.value);
+    let averageVolume = parseNumber(payload?.data?.summaryData?.AverageVolume?.value);
+    if (!averageVolume) {
+      // Nasdaq summaries may omit AverageVolume. Use completed daily sessions;
+      // today's partial volume must never enter its own comparison baseline.
+      const end = new Date(`${day}T00:00:00Z`);
+      const start = new Date(end.getTime() - 65 * 86_400_000);
+      end.setUTCDate(end.getUTCDate() - 1);
+      const params = new URLSearchParams({ assetclass: "stocks", fromdate: start.toISOString().slice(0, 10),
+        todate: end.toISOString().slice(0, 10), limit: "30" });
+      const history = await fetchJson(`${NASDAQ_BASE}/quote/${encodeURIComponent(item.stock.symbol)}/historical?${params}`, 1);
+      averageVolume = historicalAverageVolume(history?.data?.tradesTable?.rows, day);
+    }
+    if (averageVolume) {
+      if (state.averages.size > 200) state.averages.clear();
+      state.averages.set(key, averageVolume);
+    }
     return averageVolume ? { ...item, averageVolume } : null;
   } catch {
     return null;

@@ -64,6 +64,7 @@ The container serves both the frontend and API from one origin. The host must al
 - Logs are structured JSON and should be connected to the hosting provider’s alerts.
 - Nasdaq’s public endpoints used here are undocumented. Before commercial use, confirm data-display rights and migrate `server/market-data.js` to a contracted provider with a documented SLA.
 - Relative volume is adjusted linearly by elapsed regular-session time. Historical intraday volume curves would provide a more accurate opening-bell comparison.
+- When Nasdaq omits average volume from quote summaries, the scanner averages up to 30 completed daily sessions (at least 10 required), excluding today. This baseline is cached per symbol for the Eastern calendar day.
 - News is labeled as possible context, not a proven cause of price movement.
 
 ## Automated paper portfolio

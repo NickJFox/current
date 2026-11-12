@@ -1,6 +1,13 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { parseNumber, regularSessionProgress } from "../server/market-data.js";
+import { parseNumber, regularSessionProgress, historicalAverageVolume } from "../server/market-data.js";
+
+test("historical average excludes the current session and requires sufficient history", () => {
+  const rows = Array.from({ length: 12 }, (_, index) => ({ date: `10/${index + 1}/2026`, volume: "1,000" }));
+  rows.push({ date: "11/12/2026", volume: "900,000" }, { date: "invalid", volume: "5,000" });
+  assert.equal(historicalAverageVolume(rows, "2026-11-12"), 1000);
+  assert.equal(historicalAverageVolume(rows.slice(0, 9), "2026-11-12"), 0);
+});
 
 test("parseNumber handles market-data formats", () => {
   assert.equal(parseNumber("$1,234.50"), 1234.5);
