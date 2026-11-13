@@ -215,3 +215,23 @@ Provider references: [Netlify scheduling](https://docs.netlify.com/build/functio
 [background execution](https://docs.netlify.com/build/functions/background-functions/),
 [durable storage](https://docs.netlify.com/build/data-and-storage/netlify-blobs/), and
 [Alpaca paper fill limitations](https://docs.alpaca.markets/us/docs/paper-trading).
+
+### Happening-now scanner
+
+The discovery screen requests `/api/trending?mode=live` every 30 seconds. This
+read-only scanner is separate from the existing daily-volume paper strategy.
+It compares the latest five completed one-minute bars with the preceding 20
+clock minutes, requiring ≥2× volume acceleration, ≥0.5% five-minute price gain,
+a non-falling last minute, price ≥$2, and ≥$50K recent dollar volume. It does
+not require 500K accumulated shares or a positive change from yesterday.
+Signals expire when recent bars stop arriving; stale daily data is never used
+as a live fallback. A minimum of 10 baseline bars and three recent bars is
+required, so sparse feeds and the first minutes of a session can be excluded.
+
+Requires `ALPACA_API_KEY`, `ALPACA_API_SECRET`, and an undelayed
+`ALPACA_DATA_FEED=iex` or entitled `sip`. IEX represents one exchange.
+Premarket/after-hours bars are evaluated when available; overnight coverage
+is not provided. Discovery is limited to the provider's most-active/top-gainer
+universe and can miss emerging symbols. This is minute-bar polling, not a
+market-wide streaming alert service. API responses use no-store and the server
+coalesces requests with a 15-second cache. No old signals are served on failure.

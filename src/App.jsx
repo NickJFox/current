@@ -33,10 +33,10 @@ function App() {
   const [newsError, setNewsError] = useState("");
 
   const loadCompanies = useCallback(async () => {
-    setStatus("loading");
+    setStatus((previous) => previous === "ready" ? "ready" : "loading");
     setError("");
     try {
-      const response = await fetch("/api/trending");
+      const response = await fetch("/api/trending?mode=live", { cache: "no-store" });
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.error || "Could not load market data.");
       setCompanies(payload.companies);
@@ -51,7 +51,7 @@ function App() {
 
   useEffect(() => {
     loadCompanies();
-    const interval = setInterval(loadCompanies, 5 * 60 * 1000);
+    const interval = setInterval(loadCompanies, 30 * 1000);
     return () => clearInterval(interval);
   }, [loadCompanies]);
 
@@ -120,28 +120,27 @@ function App() {
         </nav>
 
         <p className="market-note">
-          <i /> {updatedAt ? `Updated ${new Date(updatedAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}` : "Loading live market data"}
+          <i /> {updatedAt ? `Updated ${new Date(updatedAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}` : "Awaiting fresh market bars"}
         </p>
       </header>
 
       <main id="top">
         <section className="hero" id="discover">
-          <p className="kicker">Momentum, measured over time</p>
-          <h1>Put the momentum<br /> list to the test.</h1>
+          <p className="kicker">Momentum as it accelerates</p>
+          <h1>Catch momentum<br /> while it builds.</h1>
           <p className="hero-copy">
-            Follow an automated paper portfolio, track every trade, and compare its performance with the market.
+            Find five-minute price and volume surges. The scanner checks every 30 seconds using the latest completed minute bars.
           </p>
         </section>
 
-        <Portfolio />
 
         <section className="feed-section">
           <div className="feed-head">
             <div>
-              <p className="section-label">Relative volume now</p>
+              <p className="section-label">Happening now</p>
               <h2>Where positive momentum is building</h2>
             </div>
-            <p>Positive price movers ranked by today’s volume pace versus their own daily average.</p>
+            <p>Five-minute price gains ranked by volume acceleration versus the preceding 20 minutes.</p>
           </div>
 
           {status === "ready" && scanInfo && <p className="portfolio-methodology">
@@ -191,11 +190,13 @@ function App() {
           {status === "ready" && visibleCompanies.length === 0 && (
             <div className="empty-state">
               <strong>{companies.length ? "No companies found" : "No qualifying momentum stocks right now"}</strong>
-              <p>{companies.length ? "Try a different company, ticker, or topic." : "The scan completed, but no stocks met the current price and volume criteria. Updates every five minutes."}</p>
+              <p>{companies.length ? "Try a different company, ticker, or topic." : "The scan completed, but no stocks met the current price and volume criteria. Checks every 30 seconds. Signals need fresh bars and enough recent trading history."}</p>
               <button type="button" onClick={() => { if (companies.length) { setQuery(""); setFilter("All"); } else loadCompanies(); }}>{companies.length ? "Clear search" : "Refresh scan"}</button>
             </div>
           )}
         </section>
+
+        <Portfolio />
 
         <section className="footer-note">
           <p>Keep exploring.</p>

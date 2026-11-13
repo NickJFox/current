@@ -1,3 +1,4 @@
+import { getLiveMomentum } from "./live-momentum.js";
 import { getCompanyNews, getTrendingCompanies } from "./market-data.js";
 
 import { getPaperPortfolio } from "./paper/runtime.js";
@@ -58,6 +59,10 @@ export async function handleApiRequest(request, response) {
       return true;
     }
     if (pathname === "/api/trending") {
+      if (new URL(request.url, "http://localhost").searchParams.get("mode") === "live") {
+        sendJson(response, 200, request.method === "HEAD" ? {} : await getLiveMomentum());
+        return true;
+      }
       data = await getTrendingCompanies();
     } else {
       const match = pathname.match(/^\/api\/news\/([A-Za-z0-9.-]{1,10})$/);
