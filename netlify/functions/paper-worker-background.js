@@ -1,6 +1,6 @@
 import { PaperEngine } from "../../server/paper/engine.js";
 import { AlpacaPaper } from "../../server/paper/alpaca.js";
-import { getTrendingCompanies } from "../../server/market-data.js";
+import { getLiveMomentum } from "../../server/live-momentum.js";
 import { authorized, isProduction, netlifyEnabled, netlifyStore } from "../../server/paper/netlify.js";
 
 export default async function worker(request, context) {
@@ -14,11 +14,16 @@ export default async function worker(request, context) {
     const requestProvider = provider.request.bind(provider);
     provider.request = (...args) => { store.assertLease(); return requestProvider(...args); };
     const engine = new PaperEngine({ store, provider,
-      scanner: () => getTrendingCompanies({ forceRefresh: true }) });
+      scanner: () => getLiveMomentum() });
     await engine.tick();
-    // One immediate follow-up reconciles asynchronous fills and attaches stops.
-    // The next scheduled run recovers anything still pending; accepted stops run at Alpaca.
-    if (engine.state?.status === "running") await engine.tick();
+    // Reconcile immediately after each scan, then check the next half-minute slot.
+    // The scheduled minute job recovers pending work; accepted stops run at Alpaca.
+    if (engine.state?.status === "running") {
+      await engine.tick();
+      await new Promise((resolve) => setTimeout(resolve, 30_000));
+      await engine.tick();
+      await engine.tick();
+    }
   } finally { await store.release(); }
   return new Response(null, { status: 204 });
 }

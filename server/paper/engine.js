@@ -1,14 +1,14 @@
+import { resetLegacyPortfolio } from "./reset.js";
+import { SCAN_MINUTES, STRATEGY_VERSION } from "./strategy.js";
 const TERMINAL = new Set(["filled", "canceled", "expired", "rejected", "replaced"]);
 const number = (value) => Number(value) || 0;
 const minute = (time) => { const [h, m] = time.split(":").map(Number); return h * 60 + m; };
-const SCAN_MINUTES = 5;
-const STRATEGY_VERSION = 2;
 
 export function easternTime(date) {
   const parts = new Intl.DateTimeFormat("en-CA", { timeZone: "America/New_York", year: "numeric",
-    month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).formatToParts(date);
+    month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit", second: "2-digit", hourCycle: "h23" }).formatToParts(date);
   const get = (type) => parts.find((p) => p.type === type).value;
-  return { day: `${get("year")}-${get("month")}-${get("day")}`, minute: Number(get("hour")) * 60 + Number(get("minute")) };
+  return { day: `${get("year")}-${get("month")}-${get("day")}`, minute: Number(get("hour")) * 60 + Number(get("minute")) + Number(get("second")) / 60 };
 }
 
 export function summarize(state) {
@@ -58,6 +58,7 @@ export class PaperEngine {
     this.busy = false;
     this.calendarCache = null;
   }
+  buyId(day, symbol) { return `cm-buy-${this.state.runId}-${day}-${symbol}`; }
   async save() { await this.store.write(this.state); }
   record(order) {
     const safe = publicOrder(order);
@@ -123,7 +124,7 @@ export class PaperEngine {
       const latest = (await this.provider.positions()).find((p) => p.symbol === position.symbol);
       if (!latest || number(latest.qty) <= 0) continue;
       const count = this.state.orders.filter((o) => o.symbol === position.symbol && o.side === "sell").length;
-      const id = `cm-stop-${position.symbol}-${count}`;
+      const id = `cm-stop-${this.state.runId}-${position.symbol}-${count}`;
       const lastExit = this.state.orders.filter((o) => o.symbol === position.symbol && o.side === "sell").at(-1);
       const emergency = lastExit?.status === "rejected";
       try {
@@ -162,11 +163,12 @@ export class PaperEngine {
     let run = daily.scans[slot];
     if (!run) {
       const signal = await this.scanner();
-      if (signal.stale || !this.fresh(signal.updatedAt)) throw new Error("Fresh momentum scan unavailable; intraday scan will retry.");
-      const companies = signal.companies.filter((c) => /^[A-Z0-9.-]{1,10}$/.test(c.ticker));
+      if (signal.stale || !this.fresh(signal.companies.length ? signal.updatedAt : signal.fetchedAt || signal.updatedAt)) throw new Error("Fresh momentum scan unavailable; intraday scan will retry.");
+      const companies = signal.companies.filter((c) => /^[A-Z0-9.-]{1,10}$/.test(c.ticker)
+        && this.fresh(c.signalAt || signal.updatedAt));
       run = { strategyVersion: STRATEGY_VERSION, target, expiresAtMinute: Math.min(target + SCAN_MINUTES, cutoff),
-        scannedAt: this.now().toISOString(), sourceAt: signal.updatedAt, source: signal.source || "Nasdaq", universe: signal.universe || null,
-        signals: companies.map((c, index) => ({ ticker: c.ticker, rank: index + 1, price: c.price, relativeVolume: c.relativeVolume })),
+        scannedAt: this.now().toISOString(), sourceAt: signal.updatedAt, source: signal.source || "Alpaca", universe: signal.universe || null,
+        signals: companies.map((c, index) => ({ ticker: c.ticker, rank: index + 1, price: c.price, acceleration: c.acceleration, change: c.change, signalAt: c.signalAt })),
         decisions: {}, complete: false };
       // Account cash includes outstanding buy commitments. Reserve their unfilled
       // limit value, including old intents whose broker response remains uncertain.
@@ -179,7 +181,7 @@ export class PaperEngine {
       const strategyCash = this.state.accountBaseline ? number(account.cash) - this.state.accountBaseline.cash + this.state.capital : summarize(this.state).cash;
       const available = Math.max(0, Math.min(strategyCash, number(account.cash)) - reserved);
       const candidates = run.signals.filter((c) => !this.state.positions.some((p) => p.symbol === c.ticker)
-        && !this.state.intents[`cm-buy-${day}-${c.ticker}`]);
+        && !this.state.intents[this.buyId(day, c.ticker)]);
       run.perStock = candidates.length ? available * 0.98 / candidates.length : 0;
       daily.scans[slot] = run;
       await this.save();
@@ -193,7 +195,7 @@ export class PaperEngine {
         run.decisions[symbol] = { status: "skipped", reason: "Scan entry window ended" };
         await this.save(); continue;
       }
-      const id = `cm-buy-${day}-${symbol}`;
+      const id = this.buyId(day, symbol);
       // Recover an already persisted intent even if the process stopped before the broker response.
       if (this.state.intents[id]) {
         // A later scan may observe a previous fill or stop-out. Never buy the
@@ -292,6 +294,8 @@ export class PaperEngine {
       const [account, initialPositions, openOrders] = await Promise.all([
         this.provider.account(), this.provider.positions(), this.provider.openOrders(),
       ]);
+      if (account.trading_blocked || account.account_blocked) throw new Error("Paper account is blocked by the provider.");
+      if (!(await resetLegacyPortfolio(this, clock, account, initialPositions, openOrders))) return;
       if (!this.state.accountId) {
         if (initialPositions.length || openOrders.length) throw new Error("Start with a dedicated paper account with no positions or open orders. Existing holdings will not be changed.");
         if (number(account.cash) < this.state.capital) throw new Error("The paper account needs at least $10,000 in simulated cash.");
@@ -304,7 +308,7 @@ export class PaperEngine {
       const knownIds = new Set(Object.keys(this.state.intents));
       if (openOrders.some((o) => !knownIds.has(o.client_order_id))) throw new Error("Unexpected open order. This automation requires a dedicated paper account.");
       await this.syncOrders();
-      const firstEntry = session ? minute(session.open) + 15 : null;
+      const firstEntry = session ? minute(session.open) : null;
       const cutoff = session ? minute(session.close) - 10 : null;
       const entryWindow = Boolean(clock.is_open && session && current >= firstEntry && current < cutoff);
       await this.cancelLateEntries(day, current, entryWindow);
@@ -371,7 +375,7 @@ export class PaperEngine {
         else this.state.snapshots.push(point);
       }
       this.state.status = clock.is_open ? "running" : "market_closed";
-      this.state.message = clock.is_open ? "Automatic paper trading active. Momentum scans every five minutes; broker-hosted trailing stops."
+      this.state.message = clock.is_open ? "Automatic paper trading active. Momentum scans every 30 seconds; broker-hosted trailing stops."
         : "Market closed. Automation resumes next session; trailing stops trigger in regular hours.";
       this.state.nextOpen = clock.next_open;
       this.state.lastSuccessAt = this.now().toISOString();
@@ -381,7 +385,9 @@ export class PaperEngine {
       console.error(JSON.stringify({ level: "error", event: "paper_worker_failed", message: error.message }));
       if (this.state) {
         this.state.status = "attention";
-        this.state.message = "Automation encountered a problem and will retry automatically. Existing broker-hosted stops remain in place.";
+        this.state.message = this.state.strategyReset
+          ? "Portfolio reset paused and will retry. No new strategy entries until previous holdings and orders are cleared."
+          : "Automation encountered a problem and will retry automatically. Existing broker-hosted stops remain in place.";
         this.state.lastError = error.message;
         await this.save();
       }

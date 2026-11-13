@@ -54,19 +54,16 @@ docker build -t current-market .
 docker run --read-only --tmpfs /tmp -p 3000:3000 current-market
 ```
 
-The container serves both the frontend and API from one origin. The host must allow outbound HTTPS requests to `api.nasdaq.com`.
+The container serves both the frontend and API from one origin. The host must allow outbound HTTPS requests to `data.alpaca.markets`, `paper-api.alpaca.markets`, and `api.nasdaq.com`.
 
 ## Operations and limitations
 
-- Market and news results are cached for five minutes; stale results can be served for up to thirty minutes during a temporary upstream failure.
+- The live scanner refreshes every 30 seconds, uses a 15-second server cache and returns no-store responses. It never falls back to stale daily-volume signals. News and the legacy `/api/trending` endpoint retain their five-minute caches and up-to-thirty-minute stale fallback.
 - API clients are limited per instance. Use a shared rate limiter and cache if scaling beyond one instance.
-- `/healthz` is intended for platform health checks.
-- Logs are structured JSON and should be connected to the hosting provider’s alerts.
-- Nasdaq’s public endpoints used here are undocumented. Before commercial use, confirm data-display rights and migrate `server/market-data.js` to a contracted provider with a documented SLA.
-- Relative volume is adjusted linearly by elapsed regular-session time. Historical intraday volume curves would provide a more accurate opening-bell comparison.
-- When Nasdaq omits average volume from quote summaries, the scanner averages up to 30 completed daily sessions (at least 10 required), excluding today. This baseline is cached per symbol for the Eastern calendar day.
-- Nasdaq scans have a 12-second total budget and fetch daily history directly, avoiding redundant quote-summary requests. If Nasdaq fails and Alpaca credentials are configured, a read-only Alpaca market-data fallback uses the union of its 100 most-active stocks and 50 top gainers. It ranks positive movers using current volume and up to 30 completed daily bars from the same configured feed (IEX by default). This fallback retains the $2 price and 500K feed-share minimums, but cannot apply Nasdaq's market-cap screen. The scanner displays its source and universe, and each paper scan records them. Data entitlements can affect fallback availability.
-- A valid scan with no qualifying stocks returns an empty result, distinct from provider errors. The browser refreshes the scanner every five minutes. Cached results are labeled stale and cannot trigger paper entries.
+- `/healthz` is intended for platform health checks. Logs are structured JSON.
+- The live scanner and paper strategy require Alpaca credentials and an undelayed IEX or entitled SIP feed. Discovery is limited to most-active/top-gainer lists. IEX represents one exchange, and sparse trading can prevent a signal from qualifying.
+- The legacy daily-volume endpoint remains available without `mode=live`; it uses Nasdaq with Alpaca fallback. It does not drive the displayed scanner or paper entries.
+- A valid scan with no qualifying stocks returns an empty result, distinct from provider errors. Only fresh signals may trigger paper entries.
 - News is labeled as possible context, not a proven cause of price movement.
 
 ## Automated paper portfolio
@@ -127,59 +124,50 @@ against a paper account: **never enable Netlify and Render/local workers against
 the same account**. They use different ledgers and cannot coordinate ownership.
 Keep the disk across deployments. Optional paid hosting and disks incur charges.
 
-### Strategy rules (version 2: all-day paper trading)
+### Strategy rules (version 3: live momentum)
 
-- Use Alpaca's clock and exchange calendar for holidays, DST, and shortened days.
-- Run a fresh momentum scan every five minutes starting 15 minutes after the
-  regular session opens, until 10 minutes before the exchange closes (normally
-  9:45 through 15:45 New York, with entries ending at 15:50). Temporary failures
-  retry within their five-minute slot. Missed slots are never backfilled; a worker
-  recovering in the afternoon can use the current slot's fresh signals.
-- Save the ranked list, relative volume, scan time, source time, and each decision.
-  Each intraday scan records strategy version 2; the 3% stop stays unchanged.
-  Earlier morning-only history is preserved.
-- Split 98% of available strategy cash equally across stocks not already held or attempted that day.
-  Reserve outstanding buy commitments before sizing the next scan.
-  Buy whole shares with a day limit at most 0.5% above a fresh ask, rounded up to a
-  cent. Unsupported symbols, stale quotes, or an allocation smaller than one share
-  are recorded as skips. Spare cash and sale proceeds are eligible next scan.
-  No borrowing or pyramiding. Unfilled entries are canceled at the end of their
-  five-minute scan window; uncertain orders remain reserved until reconciled.
-- Reconcile fills each scheduled minute (15 seconds on the optional standalone
-  server). Attach a 3% GTC trailing
-  sell-stop after a fill. Cancel a partial entry's remainder before sizing its
-  protective exit. Stop protection begins when the broker accepts the stop,
-  so a fill can remain unprotected until the next successful reconciliation.
-  Netlify performs an immediate second reconciliation after the entry cycle.
-- Keep positions overnight. Stops trigger during regular trading hours only;
-  overnight gaps can produce larger losses. Once accepted, the broker manages
-  the trailing stop even if this server is down. Expired/canceled stops are
-  recreated automatically. A definitively rejected stop triggers an automatic
-  paper market-exit attempt on the next cycle.
-- A stock can be purchased again on a later trading day, at most one entry attempt per symbol per
-  day across all scans. Already-held stocks are skipped. Proceeds become eligible
-  at the next scan; simulated cash limitations can leave later signals unpurchased.
-- SPY is a **price-return proxy** for the S&P 500, with fractional shadow shares,
-  the same $10,000 starting capital, and a fresh bid at experiment start. It stays
-  fully invested even while the strategy holds cash. Both reported returns exclude
-  dividends and additional transaction costs; this is not an index total-return
-  comparison or proof of achievable live profits. Alpaca paper fills have their
-  own fill assumptions and do not model every real trading cost.
-  On version 2 activation, save current sleeve equity and a fresh SPY price as
-  a separate comparison baseline. The dashboard reports both returns and their
-  percentage-point difference since that moment, excluding earlier strategy
-  returns. Existing holdings carry into the new period; lifetime metrics and
-  the lifetime chart retain the full history.
-- IEX quotes are the default and represent one venue, while Nasdaq supplies scanner
-  data with Alpaca market data as a fallback during Nasdaq failures. The fallback
-  compares IEX volume only with IEX historical volume (or SIP with SIP).
-  Set `ALPACA_DATA_FEED=sip` only with the appropriate Alpaca entitlement.
-  The UI displays the benchmark quote timestamp and delayed updates.
+- Paper trading and the discovery screen both use `getLiveMomentum`, with the
+  same five-minute price gain and volume-acceleration filters described below.
+  Daily-volume rankings are no longer used for paper entries.
+- Scan approximately every 30 seconds from the regular open until 10 minutes
+  before the exchange closes. The exchange calendar handles shortened sessions.
+  The scanner can display extended-hours activity; paper entries are regular-hours
+  only because the existing broker-hosted trailing stops do not trigger outside
+  regular hours. No delayed signals or missed scan slots are backfilled.
+- Save rank, acceleration, five-minute gain, bar timestamp, source and each
+  purchase decision. New entry windows expire after 30 seconds. Whole shares,
+  cash-only sizing, a limit cap 0.5% above a fresh ask, and one entry attempt per
+  symbol per day remain in effect. Split 98% of available strategy cash across
+  eligible candidates, reserving unresolved buy commitments. Already-held stocks
+  are skipped. Sale proceeds can be used at the next scan.
+- Reconcile fills and attach 3% GTC trailing stops immediately when possible.
+  The standalone worker checks every 15 seconds. The Netlify minute schedule
+  starts a background worker that reconciles immediately, then again after
+  30 seconds. Slow requests, scheduling delays or an active writer lease can
+  delay checks. Cancel partial entry remainders before attaching stops. Positions
+  may remain overnight; stops trigger in regular hours and can fill below their
+  trigger after a gap. Definitively rejected protection triggers a market-exit
+  attempt on the next cycle.
+- On the first enabled worker cycle after upgrading from an older strategy, a
+  one-time reset cancels known legacy orders and closes known legacy paper
+  holdings in regular market hours. It waits for cancellations and exits before
+  deleting portfolio history. Unexpected holdings/orders or a different account
+  stop the reset. Durable exit IDs recover interrupted or uncertain submissions.
+- After the account is flat, replace the old app ledger with a fresh $10,000
+  strategy sleeve, new order-ID namespace, no trades/history/drawdown, and a new
+  account baseline. The next eligible scan starts the SPY comparison at the same
+  $10,000. Old performance does not carry forward. This resets app tracking;
+  Alpaca's own account activity remains in its broker history and its cash balance
+  is not reset. At least $10,000 simulated cash must remain after liquidation.
+- SPY is a price-return proxy. Dividends and additional transaction costs are
+  excluded. IEX covers one exchange; SIP requires the appropriate entitlement.
+  Paper fills are simulations. Discovery coverage remains limited to the
+  provider's most-active and top-gainer universe.
 
 ### Reliability and storage
 
-Netlify uses the site-wide `momentum-paper-portfolio` Blobs store, preserving history
-across deploys. Strong reads, conditional ETag writes, and readback verification
+Netlify uses the site-wide `momentum-paper-portfolio` Blobs store, preserving the current strategy history
+across deploys. The version 3 migration clears the prior strategy after liquidation. Strong reads, conditional ETag writes, and readback verification
 protect saved state. A 16-minute lease outlives the 15-minute Background Functions
 execution limit, so an invocation killed by Netlify recovers automatically after
 lease expiry. Normal runs release their lease immediately. A crash can therefore
@@ -219,7 +207,7 @@ Provider references: [Netlify scheduling](https://docs.netlify.com/build/functio
 ### Happening-now scanner
 
 The discovery screen requests `/api/trending?mode=live` every 30 seconds. This
-read-only scanner is separate from the existing daily-volume paper strategy.
+scanner is shared by the version 3 paper strategy.
 It compares the latest five completed one-minute bars with the preceding 20
 clock minutes, requiring ≥2× volume acceleration, ≥0.5% five-minute price gain,
 a non-falling last minute, price ≥$2, and ≥$50K recent dollar volume. It does

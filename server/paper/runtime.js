@@ -5,7 +5,7 @@ import { randomUUID } from "node:crypto";
 import { FileStore } from "./store.js";
 import { AlpacaPaper } from "./alpaca.js";
 import { PaperEngine } from "./engine.js";
-import { getTrendingCompanies } from "../market-data.js";
+import { getLiveMomentum } from "../live-momentum.js";
 
 import { portfolioView } from "./view.js";
 
@@ -16,7 +16,7 @@ let running = false, starting = false, timer = null, release = null, runtimeErro
 const epochKey = Symbol.for("current-market.paper-process-epoch");
 const epoch = globalThis[epochKey] ||= randomUUID();
 const engine = new PaperEngine({ store, provider: new AlpacaPaper(), enabled,
-  scanner: () => getTrendingCompanies({ forceRefresh: true }) });
+  scanner: () => getLiveMomentum() });
 
 async function acquireLock() {
   const path = `${store.path}.lock`;
@@ -64,7 +64,7 @@ export async function startPaperWorker() {
       if (!running) return;
       try { await engine.tick(); }
       catch { runtimeError = "Portfolio storage failed. Check the persistent disk."; }
-      if (running) timer = setTimeout(loop, engine.state?.status === "running" || engine.state?.status === "attention" ? 15_000 : 60_000);
+      if (running) timer = setTimeout(loop, ["running", "attention", "resetting"].includes(engine.state?.status) ? 15_000 : 60_000);
       timer?.unref();
     };
     await loop();

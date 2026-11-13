@@ -201,7 +201,7 @@ test("a slow scan that finishes after the entry window cannot submit late buys",
   };
   await engine.tick();
   assert.equal(f.submitted.length, 0);
-  assert.equal(f.store.data.days["2026-11-11"].scans["585"].decisions.TEST.reason, "Scan entry window ended");
+  assert.equal(f.store.data.days["2026-11-11"].scans["586"].decisions.TEST.reason, "Scan entry window ended");
 });
 
 test("provider account marks prevent a fill/position timing race from fabricating drawdown", () => {
@@ -214,19 +214,21 @@ test("provider account marks prevent a fill/position timing race from fabricatin
   assert.equal(summarize(state).maxDrawdownPercent, 0);
 });
 
-test("five-minute scans survive restarts and can buy new afternoon signals", async () => {
+test("30-second scans survive restarts and can buy new afternoon signals", async () => {
   const f = fixture(); await f.make().tick();
-  f.setTime("2026-11-11T14:49:00Z"); await f.make().tick();
+  f.setTime("2026-11-11T14:46:20Z"); await f.make().tick();
   assert.equal(f.scans(), 1);
+  f.setTime("2026-11-11T14:46:30Z"); await f.make().tick();
+  assert.equal(f.scans(), 2);
   f.setSignals([{ ticker: "NEW", price: 100, relativeVolume: 2 }]);
   f.setTime("2026-11-11T18:00:00Z"); await f.make().tick();
-  assert.equal(f.scans(), 2);
+  assert.equal(f.scans(), 3);
   assert.equal(f.submitted.filter((o) => o.side === "buy").length, 2);
   assert.equal(f.submitted.filter((o) => o.type === "trailing_stop").length, 2);
   assert.ok(f.submitted.some((o) => o.symbol === "NEW" && o.side === "buy"));
   const scans = f.store.data.days["2026-11-11"].scans;
-  assert.deepEqual(Object.keys(scans), ["585", "780"]);
-  assert.equal(scans["780"].strategyVersion, 2);
+  assert.deepEqual(Object.keys(scans).sort((a, b) => Number(a) - Number(b)), ["586", "586.5", "780"]);
+  assert.equal(scans["780"].strategyVersion, 3);
 });
 
 test("a stopped-out symbol cannot be bought again by a later same-day scan", async () => {
@@ -237,7 +239,7 @@ test("a stopped-out symbol cannot be bought again by a later same-day scan", asy
   f.setTime("2026-11-11T14:51:00Z"); await f.make().tick();
   assert.equal(f.scans(), 2);
   assert.equal(f.submitted.filter((o) => o.side === "buy").length, 1);
-  assert.equal(f.store.data.days["2026-11-11"].scans["590"].decisions.TEST.reason, "Already attempted today");
+  assert.equal(f.store.data.days["2026-11-11"].scans["591"].decisions.TEST.reason, "Already attempted today");
 });
 
 test("open entries expire at the next slot and cannot be recreated by later scans", async () => {
@@ -251,9 +253,9 @@ test("open entries expire at the next slot and cannot be recreated by later scan
     return order;
   };
   await f.make().tick();
-  f.setTime("2026-11-11T14:49:00Z"); await f.make().tick();
+  f.setTime("2026-11-11T14:46:20Z"); await f.make().tick();
   assert.equal(f.canceled.length, 0);
-  f.setTime("2026-11-11T14:50:00Z"); await f.make().tick();
+  f.setTime("2026-11-11T14:46:30Z"); await f.make().tick();
   assert.equal(f.canceled.length, 1);
   assert.equal(f.submitted.filter((o) => o.side === "buy").length, 1);
 });
@@ -326,16 +328,6 @@ test("a slow order lookup crossing the scan boundary cannot submit a late buy", 
   assert.equal(f.submitted.length, 0);
 });
 
-test("new strategy preserves a legacy missed morning and can scan that afternoon", async () => {
-  const f = fixture();
-  f.store.data.days["2026-11-11"] = { missed: true, complete: true, reason: "Legacy missed entry", signals: [], decisions: {} };
-  f.setTime("2026-11-11T18:01:00Z"); await f.make().tick();
-  const daily = f.store.data.days["2026-11-11"];
-  assert.equal(daily.reason, "Legacy missed entry");
-  assert.ok(daily.scans["780"]);
-  assert.equal(f.submitted.filter((o) => o.side === "buy").length, 1);
-});
-
 test("failed SPY refresh cannot block protective stops once the comparison has started", async () => {
   const f = fixture(); await f.make().tick();
   const stop = [...f.orders.values()].find((o) => o.side === "sell"); stop.status = "canceled";
@@ -344,5 +336,152 @@ test("failed SPY refresh cannot block protective stops once the comparison has s
   f.setTime("2026-11-11T18:00:00Z"); await f.make().tick();
   assert.equal(f.submitted.filter((o) => o.type === "trailing_stop").length, 2);
   assert.equal(f.store.data.benchmarkError, "SPY unavailable");
+  assert.equal(f.store.data.status, "running");
+});
+
+function legacyFixture() {
+  const f = fixture();
+  const seed = async () => {
+    await f.make().tick();
+    f.store.data.strategyVersion = 2;
+    return f.store.data.runId;
+  };
+  const closeAtBroker = () => {
+    const submit = f.provider.submit;
+    f.provider.submit = async (body) => {
+      const order = await submit(body);
+      if (body.side === "sell" && body.type === "market") {
+        order.status = "filled"; order.filled_qty = body.qty; order.filled_avg_price = "99";
+        f.setHoldings([]);
+      }
+      return order;
+    };
+  };
+  return { ...f, seed, closeAtBroker };
+}
+
+test("strategy reset closes old holdings, clears history and restarts with fresh IDs and a $10K baseline", async () => {
+  const f = legacyFixture(), oldRun = await f.seed(); f.closeAtBroker();
+  await f.make().tick();
+  const state = f.store.data;
+  assert.equal(state.strategyVersion, 3);
+  assert.notEqual(state.runId, oldRun);
+  assert.equal(state.startedAt, null);
+  for (const name of ["orders", "positions", "snapshots"]) assert.deepEqual(state[name], []);
+  assert.deepEqual(state.days, {}); assert.deepEqual(state.intents, {});
+  assert.equal(state.benchmark, null);
+  assert.equal(summarize(state).equity, 10000);
+  assert.equal(summarize(state).profit, 0);
+  assert.equal(f.submitted.filter((o) => o.type === "market").length, 1);
+  assert.equal(f.canceled.length, 1);
+  await f.make().tick();
+  assert.equal(f.submitted.filter((o) => o.side === "buy").length, 2);
+  assert.equal(summarize(f.store.data).equity, 10000);
+  assert.equal(f.store.data.intradayExperiment.startEquity, 10000);
+  assert.equal(f.store.data.orders.length, 2);
+});
+
+test("reset waits for regular hours without canceling overnight protection", async () => {
+  const f = legacyFixture(); await f.seed();
+  f.provider.clock = async () => ({ timestamp: AT, is_open: false });
+  await f.make().tick();
+  assert.equal(f.store.data.status, "resetting");
+  assert.equal(f.canceled.length, 0);
+  assert.equal(f.submitted.length, 2);
+  assert.equal(f.store.data.strategyVersion, 2);
+});
+
+test("reset waits for cancellation acknowledgement before closing positions", async () => {
+  const f = legacyFixture(); await f.seed();
+  f.provider.cancel = async () => {};
+  await f.make().tick();
+  assert.equal(f.submitted.length, 2);
+  assert.equal(f.store.data.status, "resetting");
+  assert.equal(f.store.data.strategyVersion, 2);
+});
+
+test("a lost reset exit response is recovered without a duplicate sell", async () => {
+  const f = legacyFixture(); await f.seed();
+  const submit = f.provider.submit;
+  f.provider.submit = async (body) => {
+    const order = await submit(body);
+    if (body.type === "market") throw new Error("Lost exit response");
+    return order;
+  };
+  await f.make().tick();
+  assert.equal(f.store.data.status, "attention");
+  await f.make().tick();
+  assert.equal(f.submitted.filter((o) => o.type === "market").length, 1);
+  assert.equal(f.store.data.strategyVersion, 2);
+  const exit = [...f.orders.values()].find((o) => o.type === "market");
+  exit.status = "filled"; exit.filled_qty = exit.qty; exit.filled_avg_price = "100";
+  f.setHoldings([]);
+  await f.make().tick();
+  assert.equal(f.store.data.strategyVersion, 3);
+  assert.equal(f.store.data.orders.length, 0);
+});
+
+test("reset refuses unrelated holdings, unknown orders and changed accounts", async () => {
+  for (const mode of ["holding", "order", "account"]) {
+    const f = legacyFixture(); await f.seed();
+    if (mode === "holding") f.setHoldings([{ symbol: "OTHER", qty: "1" }]);
+    if (mode === "order") f.orders.set("unknown", { id: "unknown", client_order_id: "unknown", status: "new" });
+    if (mode === "account") f.store.data.accountId = "different-account";
+    await f.make().tick();
+    assert.equal(f.store.data.status, "attention");
+    assert.equal(f.canceled.length, 0);
+    assert.equal(f.submitted.length, 2);
+  }
+});
+
+test("flat legacy portfolios discard old history before collecting new returns", async () => {
+  const f = fixture(); f.store.data.strategyVersion = 2;
+  f.store.data.days.old = { signals: [], decisions: {} };
+  f.store.data.snapshots = [{ equity: 99999 }];
+  await f.make().tick();
+  assert.equal(f.store.data.strategyVersion, 3);
+  assert.deepEqual(f.store.data.days, {});
+  assert.deepEqual(f.store.data.snapshots, []);
+  assert.equal(f.scans(), 0);
+  assert.equal(summarize(f.store.data).returnPercent, 0);
+});
+
+test("new strategy accepts an empty current scan without requiring a fabricated bar timestamp", async () => {
+  const f = fixture(), engine = f.make();
+  engine.scanner = async () => ({ companies: [], updatedAt: null, fetchedAt: AT, stale: false });
+  await engine.tick();
+  assert.equal(f.store.data.status, "running");
+  assert.equal(f.submitted.length, 0);
+});
+
+test("a rejected reset exit retries remaining shares with a new durable ID", async () => {
+  const f = legacyFixture(); await f.seed();
+  const submit = f.provider.submit;
+  let reject = true;
+  f.provider.submit = async (body) => {
+    const order = await submit(body);
+    if (body.type === "market") {
+      order.status = reject ? "rejected" : "filled";
+      if (!reject) { order.filled_qty = body.qty; order.filled_avg_price = "100"; f.setHoldings([]); }
+      reject = false;
+    }
+    return order;
+  };
+  await f.make().tick();
+  assert.equal(f.store.data.strategyVersion, 2);
+  await f.make().tick();
+  assert.equal(f.store.data.strategyVersion, 3);
+  const exits = f.submitted.filter((o) => o.type === "market");
+  assert.equal(exits.length, 2);
+  assert.notEqual(exits[0].client_order_id, exits[1].client_order_id);
+});
+
+test("per-symbol stale signals cannot piggyback on another stock's fresh timestamp", async () => {
+  const f = fixture(), engine = f.make();
+  engine.scanner = async () => ({ stale: false, updatedAt: AT, companies: [
+    { ticker: "OLD", signalAt: "2026-11-11T14:40:00Z" },
+  ] });
+  await engine.tick();
+  assert.equal(f.submitted.length, 0);
   assert.equal(f.store.data.status, "running");
 });

@@ -1,8 +1,10 @@
+import { randomUUID } from "node:crypto";
+import { STRATEGY_VERSION } from "./strategy.js";
 import { mkdir, open, readFile, rename } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 
 export function emptyState() {
-  return { version: 1, startedAt: null, accountId: null, capital: 10_000, trailPercent: 3,
+  return { version: 1, strategyVersion: STRATEGY_VERSION, runId: randomUUID().slice(0, 8), startedAt: null, accountId: null, capital: 10_000, trailPercent: 3,
     days: {}, intents: {}, orders: [], positions: [], snapshots: [], benchmark: null,
     status: "waiting", message: "Waiting for the automated worker.", lastRunAt: null,
     lastSuccessAt: null, lastError: null };

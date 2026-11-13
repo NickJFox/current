@@ -58,7 +58,7 @@ export default function Portfolio() {
     {!portfolio && !error && <div className="loading-state" role="status">Loading portfolio performance…</div>}
     {portfolio && <>
       <div className={`portfolio-status ${["attention", "setup_required"].includes(portfolio.status) ? "attention" : ""}`}>
-        <strong>{({ running: "Automation running", market_closed: "Waiting for next session", setup_required: "Activation required", attention: "Automation needs attention", waiting: "Starting up" })[portfolio.status] || portfolio.status}</strong>
+        <strong>{({ running: "Automation running", market_closed: "Waiting for next session", setup_required: "Activation required", attention: "Automation needs attention", waiting: "Starting up", resetting: "Restarting paper portfolio" })[portfolio.status] || portfolio.status}</strong>
         <span>{portfolio.message}</span>
         {portfolio.lastError && <span role="alert">{portfolio.lastError}</span>}
         <small>Last successful check: {time(portfolio.lastSuccessAt)} · Next market open: {time(portfolio.nextOpen)}</small>
@@ -68,17 +68,17 @@ export default function Portfolio() {
         {[
           ["Portfolio value", money(m.equity), `${money(portfolio.capital)} starting capital`],
           ["Total profit / loss", money(m.profit), `${money(m.realizedProfit)} realized · ${money(m.unrealizedProfit)} unrealized`],
-          ["Lifetime portfolio return", pct(m.returnPercent), "Includes earlier strategy versions"],
-          ["Lifetime SPY return", pct(m.benchmarkReturnPercent), relative == null ? "Starts with the first trading scan" : `${relative >= 0 ? "+" : ""}${relative.toFixed(2)} percentage points vs SPY`],
+          ["Strategy return", pct(m.returnPercent), "Since the fresh momentum strategy started"],
+          ["SPY return", pct(m.benchmarkReturnPercent), relative == null ? "Starts with the first trading scan" : `${relative >= 0 ? "+" : ""}${relative.toFixed(2)} percentage points vs SPY`],
           ["Available cash", money(m.cash), `${m.positions} open positions`],
           ["Maximum drawdown", `${m.maxDrawdownPercent.toFixed(2)}%`, "From observed portfolio peaks"],
         ].map(([label, value, detail]) => <article className="portfolio-stat" key={label}><span>{label}</span><strong>{value}</strong><small>{detail}</small></article>)}
       </div>
-      <div className="portfolio-panel"><h3>All-day strategy vs. SPY</h3>
+      <div className="portfolio-panel"><h3>Live momentum strategy vs. SPY</h3>
         {portfolio.intradayExperiment ? <>
           <p>Strategy return <strong>{pct(m.intradayReturnPercent)}</strong> · SPY return <strong>{pct(m.intradayBenchmarkReturnPercent)}</strong> · Difference <strong>{m.intradayExcessReturnPercent == null ? "—" : `${m.intradayExcessReturnPercent >= 0 ? "+" : ""}${m.intradayExcessReturnPercent.toFixed(2)} percentage points`}</strong></p>
-          <small>Since {time(portfolio.intradayExperiment.startedAt)}. Both start with {money(portfolio.intradayExperiment.startEquity)}. Existing positions carry into this period. SPY is a price-return proxy for the S&amp;P 500. Paper results do not establish future profitability.</small>
-        </> : <p>Starts automatically with the first eligible all-day scan.</p>}
+          <small>Since {time(portfolio.intradayExperiment.startedAt)}. Both start with {money(portfolio.intradayExperiment.startEquity)}. The portfolio starts fresh with this strategy. SPY is a price-return proxy for the S&amp;P 500. Paper results do not establish future profitability.</small>
+        </> : <p>Starts automatically with the first eligible live momentum scan.</p>}
       </div>
       <div className="portfolio-panel"><h3>Portfolio vs. S&P 500 proxy</h3><EquityChart history={portfolio.history} capital={portfolio.capital} startedAt={portfolio.startedAt} />{portfolio.benchmark && <small>SPY quote as of {time(portfolio.benchmark.updatedAt)}</small>}{portfolio.benchmarkError && <p role="alert">Benchmark update delayed: {portfolio.benchmarkError}</p>}</div>
       <div className="portfolio-panel"><h3>Open positions</h3>
@@ -95,11 +95,11 @@ export default function Portfolio() {
         {!portfolio.days.length && <p className="portfolio-placeholder">Each trading day’s momentum list and purchase decisions will be saved here.</p>}
         {portfolio.days.map((run) => <details className="scan-history" key={run.day}><summary>{run.day} · {Object.keys(run.scans || {}).length ? `${Object.keys(run.scans).length} intraday scans · ${run.complete ? "Complete" : "In progress"}` : run.missed ? "Missed entry window" : `${run.signals.length} signals · ${run.complete ? "Complete" : "In progress"}`}</summary>
           {run.reason && <p>Earlier morning strategy: {run.reason}</p>}
-          <ul>{run.signals.map((signal) => <li key={signal.ticker}><strong>{signal.ticker}</strong> · #{signal.rank} · {signal.relativeVolume?.toFixed(1)}× volume · {run.decisions[signal.ticker]?.reason || run.decisions[signal.ticker]?.status || "Pending"}</li>)}</ul>
+          <ul>{run.signals.map((signal) => <li key={signal.ticker}><strong>{signal.ticker}</strong> · #{signal.rank} · {signal.acceleration?.toFixed(1)}× acceleration · +{signal.change?.toFixed(2)}% in 5 min · {run.decisions[signal.ticker]?.reason || run.decisions[signal.ticker]?.status || "Pending"}</li>)}</ul>
           {Object.entries(run.scans || {}).sort(([a], [b]) => Number(b) - Number(a)).map(([slot, scan]) => <details className="scan-history" key={slot}>
             <summary>{time(scan.scannedAt)} · {scan.signals.length} signals · {scan.complete ? "Complete" : "In progress"}</summary>
             {scan.source && <p>{scan.source}. {scan.universe}</p>}
-            <ul>{scan.signals.map((signal) => <li key={signal.ticker}><strong>{signal.ticker}</strong> · #{signal.rank} · {signal.relativeVolume?.toFixed(1)}× volume · {scan.decisions[signal.ticker]?.reason || scan.decisions[signal.ticker]?.status || "Pending"}</li>)}</ul>
+            <ul>{scan.signals.map((signal) => <li key={signal.ticker}><strong>{signal.ticker}</strong> · #{signal.rank} · {signal.acceleration?.toFixed(1)}× acceleration · +{signal.change?.toFixed(2)}% in 5 min · {scan.decisions[signal.ticker]?.reason || scan.decisions[signal.ticker]?.status || "Pending"}</li>)}</ul>
           </details>)}
         </details>)}
       </div>
