@@ -44,6 +44,7 @@ export default function Portfolio() {
     const interval = setInterval(load, 30_000);
     return () => { active = false; clearInterval(interval); controller.abort(); };
   }, []);
+  const resetPending = portfolio && (portfolio.reset?.pending || portfolio.strategyVersion !== 3);
   const m = portfolio?.metrics;
   const east = new Intl.DateTimeFormat("en-US", { timeZone: "America/New_York", weekday: "short", hour: "2-digit", minute: "2-digit", hourCycle: "h23" }).formatToParts(new Date());
   const get = (type) => east.find((p) => p.type === type)?.value;
@@ -64,6 +65,12 @@ export default function Portfolio() {
         <small>Last successful check: {time(portfolio.lastSuccessAt)} · Next market open: {time(portfolio.nextOpen)}</small>
         {overdue && <strong role="alert">Worker heartbeat is overdue. Values may be stale.</strong>}
       </div>
+      {resetPending && <div className="portfolio-panel" role="status">
+        <h3>Fresh strategy reset in progress</h3>
+        <p>The previous strategy’s returns and holdings are excluded from this dashboard. The new $10,000 portfolio starts after the broker confirms the old positions are closed and old orders are cleared.</p>
+        <p>No new entries are placed during the reset. This page checks automatically every 30 seconds.</p>
+      </div>}
+      {!resetPending && <>
       <div className="portfolio-stats">
         {[
           ["Portfolio value", money(m.equity), `${money(portfolio.capital)} starting capital`],
@@ -103,6 +110,7 @@ export default function Portfolio() {
           </details>)}
         </details>)}
       </div>
+      </>}
       <p className="portfolio-methodology">{portfolio.methodology} Starts {time(portfolio.startedAt)}. Stop orders may execute below their trigger price after a gap. Whole-share sizing or unsupported symbols may leave some signals unpurchased.</p>
     </>}
   </section>;

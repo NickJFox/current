@@ -1,13 +1,32 @@
+import { emptyState } from "./store.js";
+import { STRATEGY_VERSION } from "./strategy.js";
 import { summarize } from "./engine.js";
 
 export function portfolioView(state, { status = state.status, message = state.message,
   workerRunning = false, lastError = null } = {}) {
+  const pending = state.strategyVersion !== STRATEGY_VERSION || Boolean(state.strategyReset);
+  const reset = pending ? { pending: true, previousStrategyVersion: state.strategyVersion || 1,
+    startedAt: state.strategyReset?.startedAt || null,
+    remainingPositions: state.positions.length,
+    remainingOrders: state.orders.filter((o) => !["filled", "canceled", "expired", "rejected", "replaced"].includes(o.status)).length } : null;
+  const previousVersion = state.strategyVersion || 1;
+  if (pending) {
+    if (!["attention", "setup_required", "resetting"].includes(status)) {
+      status = "resetting";
+      message = "Waiting for the automated worker to clear the previous portfolio before starting the new $10,000 strategy.";
+    }
+    // Withhold legacy performance rather than relabeling it or inventing a
+    // successful reset. The worker alone reconciles and replaces the ledger.
+    state = { ...emptyState(), lastRunAt: state.lastRunAt, lastSuccessAt: state.lastSuccessAt,
+      lastError: state.lastError, nextOpen: state.nextOpen };
+  }
   return {
-    status, message,
+    status, message, reset,
+
     workerRunning, lastRunAt: state.lastRunAt, lastSuccessAt: state.lastSuccessAt,
-    strategyVersion: state.strategyVersion || 1, intradayExperiment: state.intradayExperiment || null,
+    strategyVersion: pending ? previousVersion : state.strategyVersion || 1, intradayExperiment: state.intradayExperiment || null,
     lastError: lastError || state.lastError, startedAt: state.startedAt, nextOpen: state.nextOpen || null,
-    capital: state.capital, trailPercent: state.trailPercent, metrics: summarize(state),
+    capital: state.capital, trailPercent: state.trailPercent, metrics: pending ? null : summarize(state),
     positions: state.positions.map((p) => ({ ...p, stop: state.orders.findLast((o) => o.symbol === p.symbol && o.side === "sell" && !["filled", "canceled", "expired", "rejected", "replaced"].includes(o.status))?.stop_price || null })),
     orders: state.orders.slice(-100).reverse().map(({ id, ...o }) => o),
     days: Object.entries(state.days).sort(([a], [b]) => b.localeCompare(a)).slice(0, 30).map(([day, details]) => ({ day, ...details })),
