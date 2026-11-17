@@ -9,6 +9,7 @@ const state = {
   trendingAt: 0,
   trendingRequest: null,
   news: new Map(),
+  averages: new Map(),
 };
 
 export function parseNumber(value) {
@@ -20,12 +21,12 @@ export function parseNumber(value) {
   const parsed = Number.parseFloat(normalized);
   return Number.isFinite(parsed) ? parsed * (multipliers[suffix] || 1) : 0;
 }
-async function fetchJson(url, attempts = 2) {
+async function fetchJson(url, attempts = 2, signal) {
   let lastError;
   for (let attempt = 0; attempt < attempts; attempt += 1) {
     try {
       const response = await fetch(url, {
-        signal: AbortSignal.timeout(REQUEST_TIMEOUT),
+        signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(REQUEST_TIMEOUT)]) : AbortSignal.timeout(REQUEST_TIMEOUT),
         headers: {
           accept: "application/json, text/plain, */*",
           "user-agent": USER_AGENT,
@@ -35,6 +36,7 @@ async function fetchJson(url, attempts = 2) {
       return await response.json();
     } catch (error) {
       lastError = error;
+      if (signal?.aborted) throw error;
       if (attempt + 1 < attempts) {
         await new Promise((resolve) => setTimeout(resolve, 250 * (attempt + 1)));
       }
@@ -116,34 +118,61 @@ function toCompany(stock, index, relativeVolume, averageVolume) {
   };
 }
 
-async function addAverageVolume(item) {
+export function historicalAverageVolume(rows, beforeDay) {
+  const volumes = (rows || [])
+    .filter((row) => {
+      const date = new Date(row.date);
+      return Number.isFinite(date.getTime()) && date.toISOString().slice(0, 10) < beforeDay;
+    })
+    .sort((a, b) => new Date(b.date) - new Date(a.date))
+    .slice(0, 30)
+    .map((row) => parseNumber(row.volume))
+    .filter((volume) => volume > 0);
+  return volumes.length >= 10 ? volumes.reduce((sum, volume) => sum + volume, 0) / volumes.length : 0;
+}
+
+async function addAverageVolume(item, day, signal) {
   try {
-    const payload = await fetchJson(
-      `${NASDAQ_BASE}/quote/${encodeURIComponent(item.stock.symbol)}/summary?assetclass=stocks`,
-      1,
-    );
-    const averageVolume = parseNumber(payload?.data?.summaryData?.AverageVolume?.value);
+    const key = `${day}:${item.stock.symbol}`;
+    if (state.averages.has(key)) return { ...item, averageVolume: state.averages.get(key) };
+    // Nasdaq summaries omit AverageVolume. Go directly to completed daily
+    // sessions instead of making a redundant summary request for each stock.
+    const end = new Date(`${day}T00:00:00Z`);
+    const start = new Date(end.getTime() - 65 * 86_400_000);
+    end.setUTCDate(end.getUTCDate() - 1);
+    const params = new URLSearchParams({ assetclass: "stocks", fromdate: start.toISOString().slice(0, 10),
+      todate: end.toISOString().slice(0, 10), limit: "30" });
+    const history = await fetchJson(`${NASDAQ_BASE}/quote/${encodeURIComponent(item.stock.symbol)}/historical?${params}`, 1, signal);
+    const averageVolume = historicalAverageVolume(history?.data?.tradesTable?.rows, day);
+    if (averageVolume) {
+      if (state.averages.size > 200) state.averages.clear();
+      state.averages.set(key, averageVolume);
+    }
     return averageVolume ? { ...item, averageVolume } : null;
   } catch {
     return null;
   }
 }
 
-async function enrichInBatches(items, batchSize = 8) {
+async function enrichInBatches(items, day, signal, batchSize = 8) {
   const enriched = [];
   for (let index = 0; index < items.length; index += batchSize) {
-    const batch = await Promise.all(items.slice(index, index + batchSize).map(addAverageVolume));
+    if (signal.aborted) break;
+    const batch = await Promise.all(items.slice(index, index + batchSize).map((item) => addAverageVolume(item, day, signal)));
     enriched.push(...batch.filter(Boolean));
   }
   return enriched;
 }
 
 async function refreshTrending() {
+  const signal = AbortSignal.timeout(12000);
   const payload = await fetchJson(
     `${NASDAQ_BASE}/screener/stocks?tableonly=true&limit=25&offset=0&download=true`,
+    2, signal,
   );
-  const rows = payload?.data?.rows;
+  const rows = payload?.data?.table?.rows || payload?.data?.rows;
   if (!Array.isArray(rows)) throw new Error("Invalid screener response");
+  if (rows.length && !rows.some((row) => Object.hasOwn(row, "volume"))) throw new Error("Nasdaq screener volume fields unavailable.");
 
   const eligible = rows
     .map((stock) => ({
@@ -165,8 +194,16 @@ async function refreshTrending() {
     .sort((a, b) => b.turnover - a.turnover)
     .slice(0, 40);
 
-  const sessionProgress = regularSessionProgress();
-  const enriched = await enrichInBatches(eligible);
+  const now = new Date();
+  const [month, day, year] = new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/New_York",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(now).split("/");
+  const sessionProgress = regularSessionProgress(now);
+  const enriched = await enrichInBatches(eligible, `${year}-${month}-${day}`, signal);
+  if (eligible.length && !enriched.length) throw new Error("Nasdaq historical volume data unavailable.");
   const companies = enriched
     .map((item) => ({
       ...item,
@@ -178,8 +215,6 @@ async function refreshTrending() {
     .map(({ stock, relativeVolume, averageVolume }, index) =>
       toCompany(stock, index, relativeVolume, averageVolume),
     );
-  if (!companies.length) throw new Error("No qualifying companies returned");
-
   return {
     companies,
     updatedAt: new Date().toISOString(),
