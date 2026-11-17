@@ -1,7 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 
-import Portfolio from "./Portfolio.jsx";
-
 function SearchIcon() {
   return (
     <svg viewBox="0 0 24 24" aria-hidden="true">
@@ -24,7 +22,6 @@ function App() {
   const [status, setStatus] = useState("loading");
   const [error, setError] = useState("");
   const [updatedAt, setUpdatedAt] = useState(null);
-  const [scanInfo, setScanInfo] = useState(null);
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState("All");
   const [selected, setSelected] = useState(null);
@@ -33,15 +30,14 @@ function App() {
   const [newsError, setNewsError] = useState("");
 
   const loadCompanies = useCallback(async () => {
-    setStatus((previous) => previous === "ready" ? "ready" : "loading");
+    setStatus("loading");
     setError("");
     try {
-      const response = await fetch("/api/trending?mode=live", { cache: "no-store" });
+      const response = await fetch("/api/trending");
       const payload = await response.json();
       if (!response.ok) throw new Error(payload.error || "Could not load market data.");
       setCompanies(payload.companies);
       setUpdatedAt(payload.updatedAt);
-      setScanInfo({ source: payload.source, universe: payload.universe, stale: payload.stale });
       setStatus("ready");
     } catch (loadError) {
       setError(loadError.message);
@@ -51,8 +47,6 @@ function App() {
 
   useEffect(() => {
     loadCompanies();
-    const interval = setInterval(loadCompanies, 30 * 1000);
-    return () => clearInterval(interval);
   }, [loadCompanies]);
 
   useEffect(() => {
@@ -115,37 +109,31 @@ function App() {
         </a>
 
         <nav aria-label="Primary navigation">
-          <a href="#performance">Performance</a>
-          <a href="#discover">Discover</a>
+          <a className="active" href="#discover">Discover</a>
         </nav>
 
         <p className="market-note">
-          <i /> {updatedAt ? `Updated ${new Date(updatedAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}` : "Awaiting fresh market bars"}
+          <i /> {updatedAt ? `Updated ${new Date(updatedAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}` : "Loading live market data"}
         </p>
       </header>
 
       <main id="top">
         <section className="hero" id="discover">
-          <p className="kicker">Momentum as it accelerates</p>
-          <h1>Catch momentum<br /> while it builds.</h1>
+          <p className="kicker">Volume signals, without the noise</p>
+          <h1>See what companies<br /> people are talking about.</h1>
           <p className="hero-copy">
-            Find five-minute price and volume surges. The scanner checks every 30 seconds using the latest completed minute bars.
+            Find companies rising while trading above their normal volume.
           </p>
         </section>
-
 
         <section className="feed-section">
           <div className="feed-head">
             <div>
-              <p className="section-label">Happening now</p>
+              <p className="section-label">Relative volume now</p>
               <h2>Where positive momentum is building</h2>
             </div>
-            <p>Five-minute price gains ranked by volume acceleration versus the preceding 20 minutes.</p>
+            <p>Positive price movers ranked by today’s volume pace versus their own daily average.</p>
           </div>
-
-          {status === "ready" && scanInfo && <p className="portfolio-methodology">
-            Source: {scanInfo.source}. {scanInfo.universe} {scanInfo.stale ? "Showing cached data while the provider is unavailable." : ""}
-          </p>}
 
           {status === "loading" && (
             <div className="loading-state" role="status">
@@ -189,14 +177,12 @@ function App() {
 
           {status === "ready" && visibleCompanies.length === 0 && (
             <div className="empty-state">
-              <strong>{companies.length ? "No companies found" : "No qualifying momentum stocks right now"}</strong>
-              <p>{companies.length ? "Try a different company, ticker, or topic." : "The scan completed, but no stocks met the current price and volume criteria. Checks every 30 seconds. Signals need fresh bars and enough recent trading history."}</p>
-              <button type="button" onClick={() => { if (companies.length) { setQuery(""); setFilter("All"); } else loadCompanies(); }}>{companies.length ? "Clear search" : "Refresh scan"}</button>
+              <strong>No companies found</strong>
+              <p>Try a different company, ticker, or topic.</p>
+              <button type="button" onClick={() => { setQuery(""); setFilter("All"); }}>Clear search</button>
             </div>
           )}
         </section>
-
-        <Portfolio />
 
         <section className="footer-note">
           <p>Keep exploring.</p>

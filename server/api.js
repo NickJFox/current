@@ -1,7 +1,4 @@
-import { getLiveMomentum } from "./live-momentum.js";
 import { getCompanyNews, getTrendingCompanies } from "./market-data.js";
-
-import { getPaperPortfolio } from "./paper/runtime.js";
 
 const WINDOW_MS = 60_000;
 const MAX_REQUESTS = Number(process.env.RATE_LIMIT_PER_MINUTE || 90);
@@ -54,15 +51,7 @@ export async function handleApiRequest(request, response) {
 
   try {
     let data;
-    if (pathname === "/api/portfolio") {
-      sendJson(response, 200, request.method === "HEAD" ? {} : await getPaperPortfolio());
-      return true;
-    }
     if (pathname === "/api/trending") {
-      if (new URL(request.url, "http://localhost").searchParams.get("mode") === "live") {
-        sendJson(response, 200, request.method === "HEAD" ? {} : await getLiveMomentum());
-        return true;
-      }
       data = await getTrendingCompanies();
     } else {
       const match = pathname.match(/^\/api\/news\/([A-Za-z0-9.-]{1,10})$/);
@@ -81,7 +70,7 @@ export async function handleApiRequest(request, response) {
       message: error instanceof Error ? error.message : "Unknown error",
     }));
     sendJson(response, 502, {
-      error: pathname === "/api/portfolio" ? "Portfolio storage is temporarily unavailable." : pathname.startsWith("/api/news/")
+      error: pathname.startsWith("/api/news/")
         ? "Recent news is temporarily unavailable."
         : "Live market data is temporarily unavailable.",
     });

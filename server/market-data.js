@@ -1,6 +1,3 @@
-import { AlpacaPaper } from "./paper/alpaca.js";
-import { alpacaScan } from "./alpaca-scanner.js";
-
 const NASDAQ_BASE = "https://api.nasdaq.com/api";
 const CACHE_TTL = Number(process.env.CACHE_TTL_MS || 5 * 60 * 1000);
 const STALE_TTL = Number(process.env.STALE_TTL_MS || 30 * 60 * 1000);
@@ -12,7 +9,6 @@ const state = {
   trendingAt: 0,
   trendingRequest: null,
   news: new Map(),
-  averages: new Map(),
 };
 
 export function parseNumber(value) {
@@ -24,12 +20,12 @@ export function parseNumber(value) {
   const parsed = Number.parseFloat(normalized);
   return Number.isFinite(parsed) ? parsed * (multipliers[suffix] || 1) : 0;
 }
-async function fetchJson(url, attempts = 2, signal) {
+async function fetchJson(url, attempts = 2) {
   let lastError;
   for (let attempt = 0; attempt < attempts; attempt += 1) {
     try {
       const response = await fetch(url, {
-        signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(REQUEST_TIMEOUT)]) : AbortSignal.timeout(REQUEST_TIMEOUT),
+        signal: AbortSignal.timeout(REQUEST_TIMEOUT),
         headers: {
           accept: "application/json, text/plain, */*",
           "user-agent": USER_AGENT,
@@ -39,7 +35,6 @@ async function fetchJson(url, attempts = 2, signal) {
       return await response.json();
     } catch (error) {
       lastError = error;
-      if (signal?.aborted) throw error;
       if (attempt + 1 < attempts) {
         await new Promise((resolve) => setTimeout(resolve, 250 * (attempt + 1)));
       }
@@ -91,8 +86,8 @@ export function regularSessionProgress(date = new Date()) {
   const minutes = Number(value("hour")) * 60 + Number(value("minute"));
   const open = 9 * 60 + 30;
   const close = 16 * 60;
-  if (minutes < open || minutes >= close) return 1;
-  return Math.max((minutes - open) / (close - open), 1 / (close - open));
+  if (minutes <= open || minutes >= close) return 1;
+  return Math.max((minutes - open) / (close - open), 0.1);
 }
 
 function toCompany(stock, index, relativeVolume, averageVolume) {
@@ -121,62 +116,34 @@ function toCompany(stock, index, relativeVolume, averageVolume) {
   };
 }
 
-export function historicalAverageVolume(rows, beforeDay) {
-  const volumes = (rows || [])
-    .filter((row) => {
-      const date = new Date(row.date);
-      return Number.isFinite(date.getTime()) && date.toISOString().slice(0, 10) < beforeDay;
-    })
-    .sort((a, b) => new Date(b.date) - new Date(a.date))
-    .slice(0, 30)
-    .map((row) => parseNumber(row.volume))
-    .filter((volume) => volume > 0);
-  return volumes.length >= 10 ? volumes.reduce((sum, volume) => sum + volume, 0) / volumes.length : 0;
-}
-
-async function addAverageVolume(item, signal) {
+async function addAverageVolume(item) {
   try {
-    const day = new Intl.DateTimeFormat("en-CA", { timeZone: "America/New_York" }).format(new Date());
-    const key = `${day}:${item.stock.symbol}`;
-    if (state.averages.has(key)) return { ...item, averageVolume: state.averages.get(key) };
-    // Nasdaq summaries omit AverageVolume. Go directly to completed daily
-    // sessions instead of making a redundant summary request for each stock.
-    const end = new Date(`${day}T00:00:00Z`);
-    const start = new Date(end.getTime() - 65 * 86_400_000);
-    end.setUTCDate(end.getUTCDate() - 1);
-    const params = new URLSearchParams({ assetclass: "stocks", fromdate: start.toISOString().slice(0, 10),
-      todate: end.toISOString().slice(0, 10), limit: "30" });
-    const history = await fetchJson(`${NASDAQ_BASE}/quote/${encodeURIComponent(item.stock.symbol)}/historical?${params}`, 1, signal);
-    const averageVolume = historicalAverageVolume(history?.data?.tradesTable?.rows, day);
-    if (averageVolume) {
-      if (state.averages.size > 200) state.averages.clear();
-      state.averages.set(key, averageVolume);
-    }
+    const payload = await fetchJson(
+      `${NASDAQ_BASE}/quote/${encodeURIComponent(item.stock.symbol)}/summary?assetclass=stocks`,
+      1,
+    );
+    const averageVolume = parseNumber(payload?.data?.summaryData?.AverageVolume?.value);
     return averageVolume ? { ...item, averageVolume } : null;
   } catch {
     return null;
   }
 }
 
-async function enrichInBatches(items, signal, batchSize = 8) {
+async function enrichInBatches(items, batchSize = 8) {
   const enriched = [];
   for (let index = 0; index < items.length; index += batchSize) {
-    if (signal.aborted) break;
-    const batch = await Promise.all(items.slice(index, index + batchSize).map((item) => addAverageVolume(item, signal)));
+    const batch = await Promise.all(items.slice(index, index + batchSize).map(addAverageVolume));
     enriched.push(...batch.filter(Boolean));
   }
   return enriched;
 }
 
-async function refreshNasdaqTrending() {
-  const signal = AbortSignal.timeout(12000);
+async function refreshTrending() {
   const payload = await fetchJson(
     `${NASDAQ_BASE}/screener/stocks?tableonly=true&limit=25&offset=0&download=true`,
-    2, signal,
   );
-  const rows = payload?.data?.table?.rows || payload?.data?.rows;
+  const rows = payload?.data?.rows;
   if (!Array.isArray(rows)) throw new Error("Invalid screener response");
-  if (rows.length && !rows.some((row) => Object.hasOwn(row, "volume"))) throw new Error("Nasdaq screener volume fields unavailable.");
 
   const eligible = rows
     .map((stock) => ({
@@ -199,8 +166,7 @@ async function refreshNasdaqTrending() {
     .slice(0, 40);
 
   const sessionProgress = regularSessionProgress();
-  const enriched = await enrichInBatches(eligible, signal);
-  if (eligible.length && !enriched.length) throw new Error("Nasdaq historical volume data unavailable.");
+  const enriched = await enrichInBatches(eligible);
   const companies = enriched
     .map((item) => ({
       ...item,
@@ -212,38 +178,20 @@ async function refreshNasdaqTrending() {
     .map(({ stock, relativeVolume, averageVolume }, index) =>
       toCompany(stock, index, relativeVolume, averageVolume),
     );
+  if (!companies.length) throw new Error("No qualifying companies returned");
+
   return {
     companies,
     updatedAt: new Date().toISOString(),
     source: "Nasdaq",
     sessionAdjusted: sessionProgress < 1,
     stale: false,
-    universe: "Nasdaq screener listings; $300M market-cap and 500K-share minimums.",
   };
 }
 
-async function refreshTrending() {
-  try { return await refreshNasdaqTrending(); }
-  catch (error) {
-    console.warn(JSON.stringify({ event: "nasdaq_scan_failed", message: error.message }));
-    const provider = new AlpacaPaper();
-    if (!provider.configured) throw error;
-    const now = new Date(), progress = regularSessionProgress(now);
-    const deadline = AbortSignal.timeout(20000);
-    const { items, sourceAt } = await alpacaScan({ feed: provider.feed, now, progress,
-      request: (path) => provider.request(path, { data: true, signal: deadline }) });
-    const companies = items.map((item) => ({ ...item, relativeVolume: item.stock.volume / (item.averageVolume * progress) }))
-      .filter((item) => item.relativeVolume >= 1).sort((a, b) => b.relativeVolume - a.relativeVolume).slice(0, 12)
-      .map((item, index) => toCompany(item.stock, index, item.relativeVolume, item.averageVolume));
-    return { companies, updatedAt: sourceAt, fetchedAt: now.toISOString(), source: `Alpaca (${provider.feed.toUpperCase()})`,
-      universe: "Most-active stocks and top gainers; 500K feed shares minimum, no market-cap screen. Relative volume uses the same feed for current and historical volume.",
-      sessionAdjusted: progress < 1, stale: false };
-  }
-}
-
-export async function getTrendingCompanies({ forceRefresh = false } = {}) {
+export async function getTrendingCompanies() {
   const age = Date.now() - state.trendingAt;
-  if (!forceRefresh && state.trending && age < CACHE_TTL) return state.trending;
+  if (state.trending && age < CACHE_TTL) return state.trending;
   if (state.trendingRequest) return state.trendingRequest;
 
   state.trendingRequest = refreshTrending()

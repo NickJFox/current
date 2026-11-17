@@ -1,4 +1,3 @@
-import { getLiveMomentum } from "../../server/live-momentum.js";
 import { getTrendingCompanies } from "../../server/market-data.js";
 
 const jsonHeaders = {
@@ -16,11 +15,10 @@ export async function handler(event) {
   }
 
   try {
-    const live = event.queryStringParameters?.mode === "live";
-    const data = await (live ? getLiveMomentum() : getTrendingCompanies());
+    const data = await getTrendingCompanies();
     return {
       statusCode: 200,
-      headers: live ? { ...jsonHeaders, "Cache-Control": "no-store" } : jsonHeaders,
+      headers: jsonHeaders,
       body: event.httpMethod === "HEAD" ? "" : JSON.stringify(data),
     };
   } catch (error) {
